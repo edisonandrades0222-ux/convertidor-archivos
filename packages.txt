@@ -1,0 +1,2 @@
+libredwg-tools
+fonts-dejavu-core
