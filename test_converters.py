@@ -109,6 +109,37 @@ def test_image_conversion(sample_pdf, test_dir):
     assert Path(res).exists()
     assert Path(res).stat().st_size > 0
 
+def test_cad_multi_layout_export(test_dir):
+    import ezdxf
+    import pymupdf
+    multi_dxf_path = test_dir / "test_multi_layout.dxf"
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    msp.add_line((0, 0), (100, 100))
+
+    # Crear 3 layouts con diferentes nombres y geometrías
+    l1 = doc.layouts.new("Plano_Arquitectura")
+    l1.add_circle((50, 50), 30)
+
+    l2 = doc.layouts.new("Plano_Estructuras")
+    l2.add_line((10, 10), (200, 200))
+
+    l3 = doc.layouts.new("Plano_Instalaciones")
+    l3.add_text("Texto Instalaciones", dxfattribs={"height": 5}).set_placement((20, 20))
+
+    doc.saveas(str(multi_dxf_path))
+    assert multi_dxf_path.exists()
+
+    out_pdf = test_dir / "test_multi_layout.pdf"
+    res = dxf_to_pdf(multi_dxf_path, out_pdf, space_mode="all_layouts", paper_size="Auto")
+    assert Path(res).exists()
+    
+    # Verificar que el PDF generado tenga al menos 3 páginas correspondientes a los layouts
+    pdf_doc = pymupdf.open(str(res))
+    assert len(pdf_doc) >= 3
+    pdf_doc.close()
+
 if __name__ == "__main__":
     ret = pytest.main([__file__, "-v", "-s"])
     sys.exit(ret)
+

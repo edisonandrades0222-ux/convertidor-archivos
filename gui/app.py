@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import threading
 from pathlib import Path
@@ -200,14 +200,14 @@ class UniversalConverterApp(ctk.CTk):
         self.combo_cad_space = ctk.CTkComboBox(
             cad_row1,
             values=[
-                "Lámina / Layout (Presentación)",
                 "Todos los Layouts (PDF multipágina)",
+                "Lámina / Layout (Presentación)",
                 "Espacio Modelo (ModelSpace)"
             ],
             width=240,
             state="readonly"
         )
-        self.combo_cad_space.set("Lámina / Layout (Presentación)")
+        self.combo_cad_space.set("Todos los Layouts (PDF multipágina)")
         self.combo_cad_space.pack(side="left", padx=(0, 20))
 
         ctk.CTkLabel(cad_row1, text="Estilo de Color:", width=100, anchor="w").pack(side="left")
@@ -246,6 +246,7 @@ class UniversalConverterApp(ctk.CTk):
         self.combo_cad_paper = ctk.CTkComboBox(
             cad_row2,
             values=[
+                "Auto (Detectar en AutoCAD)",
                 "A3 (420 x 297 mm)",
                 "A4 (297 x 210 mm)",
                 "A2 (594 x 420 mm)",
@@ -254,10 +255,10 @@ class UniversalConverterApp(ctk.CTk):
                 "Carta / Letter",
                 "Oficio / Legal"
             ],
-            width=135,
+            width=170,
             state="readonly"
         )
-        self.combo_cad_paper.set("A3 (420 x 297 mm)")
+        self.combo_cad_paper.set("Auto (Detectar en AutoCAD)")
         self.combo_cad_paper.pack(side="left", padx=(0, 10))
 
         self.combo_cad_orient = ctk.CTkComboBox(
@@ -457,7 +458,9 @@ class UniversalConverterApp(ctk.CTk):
 
         # Tamano papel
         pap = self.combo_cad_paper.get()
-        if "A0" in pap:
+        if "Auto" in pap:
+            paper_size = "Auto"
+        elif "A0" in pap:
             paper_size = "A0"
         elif "A1" in pap:
             paper_size = "A1"
@@ -472,7 +475,7 @@ class UniversalConverterApp(ctk.CTk):
         elif "Oficio" in pap:
             paper_size = "Oficio"
         else:
-            paper_size = "A3"
+            paper_size = "Auto"
 
         # Orientacion
         orient = "portrait" if "Vertical" in self.combo_cad_orient.get() else "landscape"

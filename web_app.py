@@ -86,9 +86,14 @@ if uploaded_file:
                 col1, col2 = st.columns(2)
                 with col1:
                     space_choice = st.selectbox(
-                        "Extraer espacio:",
-                        ["Lámina / Layout (Presentación)", "Todos los Layouts (PDF multipágina)", "Espacio Modelo (ModelSpace)"],
-                        help="Extrae el Layout armado con cajetín y ventanas gráficas en vez del modelo infinito."
+                        "Extracción de Láminas / Layouts:",
+                        [
+                            "📑 Todos los Layouts / Láminas (PDF multipágina completo)",
+                            "📄 Solo la Primera Lámina / Layout principal",
+                            "🗺️ Espacio Modelo (ModelSpace infinito)"
+                        ],
+                        index=0,
+                        help="Exporta todas las láminas con cajetín organizadas en un único PDF multipágina ordenado."
                     )
                     color_choice = st.selectbox(
                         "Estilo de color:",
@@ -99,12 +104,22 @@ if uploaded_file:
                     weight_choice = st.selectbox(
                         "Grosor de línea:",
                         ["Fino (0.50x) - Recomendado", "Ultrafino (0.25x)", "Normal (1.00x)", "Grueso (1.50x)"],
-                        help="Reduce el grosor para evitar empastes en zonas densas."
+                        help="Reduce el grosor para evitar empastes en planos de alta densidad."
                     )
                     paper_choice = st.selectbox(
                         "Tamaño de hoja:",
-                        ["A3 (420 x 297 mm)", "A4 (297 x 210 mm)", "A2 (594 x 420 mm)", "A1 (841 x 594 mm)", "A0 (1189 x 841 mm)", "Carta / Letter", "Oficio / Legal"],
-                        index=0
+                        [
+                            "Auto (Detectar tamaño real de cada lámina en AutoCAD)",
+                            "A3 (420 x 297 mm)",
+                            "A4 (297 x 210 mm)",
+                            "A2 (594 x 420 mm)",
+                            "A1 (841 x 594 mm)",
+                            "A0 (1189 x 841 mm)",
+                            "Carta / Letter",
+                            "Oficio / Legal"
+                        ],
+                        index=0,
+                        help="Por defecto detecta las dimensiones exactas de cada lámina configuradas en AutoCAD."
                     )
                     orient_choice = st.radio("Orientación:", ["Horizontal", "Vertical"], horizontal=True)
 
@@ -119,11 +134,12 @@ if uploaded_file:
                 elif "1.00" in weight_choice:
                     weight_val = 1.00
 
-                paper_val = "A3"
-                for p in ["A0", "A1", "A2", "A3", "A4", "Carta", "Oficio"]:
-                    if p in paper_choice:
-                        paper_val = p
-                        break
+                paper_val = "Auto"
+                if "Auto" not in paper_choice:
+                    for p in ["A0", "A1", "A2", "A3", "A4", "Carta", "Oficio"]:
+                        if p in paper_choice:
+                            paper_val = p
+                            break
 
                 cad_options = {
                     "space_mode": space_mode,
