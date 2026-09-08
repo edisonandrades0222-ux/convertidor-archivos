@@ -1,80 +1,49 @@
 @echo off
 setlocal enabledelayedexpansion
-title Subir Cambios a GitHub
+title Subir Cambios a GitHub (edisonandrades0222-ux/convertidor-archivos)
 cd /d "%~dp0"
 
 echo =========================================================
-echo       SUBIR PROYECTO A GITHUB (STREAMLIT CLOUD)
+echo    SUBIENDO PROYECTO A GITHUB: edisonandrades0222-ux
 echo =========================================================
 echo.
 
-:: 1. Comprobar si Git esta en el PATH o en la carpeta portable MinGit
-where git >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    if exist "%LOCALAPPDATA%\Programs\MinGit\cmd\git.exe" (
-        set "PATH=%LOCALAPPDATA%\Programs\MinGit\cmd;!PATH!"
-    ) else (
-        echo [ERROR] No se encontro Git instalado.
-        pause
-        exit /b 1
-    )
+:: 1. Agregar Git al PATH de la sesion
+if exist "%LOCALAPPDATA%\Programs\MinGit\cmd\git.exe" (
+    set "PATH=%LOCALAPPDATA%\Programs\MinGit\cmd;%LOCALAPPDATA%\Programs\MinGit\mingw64\bin;!PATH!"
 )
 
-:: 2. Verificar estado del repositorio
-git status >nul 2>&1
+:: 2. Asegurar origen remoto
+git remote set-url origin https://github.com/edisonandrades0222-ux/convertidor-archivos.git >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo [INFO] Inicializando repositorio Git...
-    git init -b main
+    git remote add origin https://github.com/edisonandrades0222-ux/convertidor-archivos.git
 )
 
-:: 3. Verificar si ya existe remote origin
-git remote get-url origin >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo No hay un repositorio remoto de GitHub configurado.
-    echo Por favor introduce la URL de tu repositorio en GitHub
-    echo (Ejemplo: https://github.com/TuUsuario/convertidor-archivos.git):
-    echo.
-    set /p REPO_URL="URL del repositorio: "
-    if "!REPO_URL!"=="" (
-        echo [ERROR] No introdujiste una URL valida.
-        pause
-        exit /b 1
-    )
-    git remote add origin !REPO_URL!
-    echo [OK] Repositorio remoto agregado.
-) else (
-    for /f "tokens=*" %%i in ('git remote get-url origin') do set CURRENT_REMOTE=%%i
-    echo [INFO] Repositorio remoto actual: !CURRENT_REMOTE!
-)
-
-echo.
-echo [1/3] Agregando archivos modificados...
+echo [1/3] Preparando archivos...
 git add .
 
-echo [2/3] Creando commit...
-set /p COMMIT_MSG="Mensaje para el commit (presiona ENTER para 'Actualizacion'): "
-if "!COMMIT_MSG!"=="" set COMMIT_MSG=Actualizacion
-git commit -m "!COMMIT_MSG!"
+echo [2/3] Verificando commits locales...
+git commit -m "Refactor y mejoras: persistencia de descarga, Streamlit Cloud y pruebas" >nul 2>&1
 
+echo [3/3] Subiendo a GitHub (rama main)...
 echo.
-echo [3/3] Subiendo a la rama principal (main)...
+echo * NOTA: Si se abre una ventana en el navegador, autoriza el acceso a GitHub.
+echo.
+
 git branch -M main
-git push -u origin main
-if %ERRORLEVEL% NEQ 0 (
+git push -u origin main --force
+
+if %ERRORLEVEL% EQU 0 (
     echo.
-    echo [ADVERTENCIA] Si el repositorio remoto ya tenia commits previos, es posible que requiera forzar o sincronizar:
-    echo Deseas forzar la subida (git push -u origin main --force)? [S/N]
-    set /p FORCE_PUSH="Opcion: "
-    if /i "!FORCE_PUSH!"=="S" (
-        git push -u origin main --force
-    )
+    echo =========================================================
+    echo   [EXITO] Archivos subidos exitosamente a GitHub!
+    echo   Streamlit Cloud se actualizara en 1 o 2 minutos en:
+    echo   https://convertidor-archivos-wcwowx7ldqebacrjnjbqb4.streamlit.app/
+    echo =========================================================
+) else (
+    echo.
+    echo [ERROR] No se pudo completar la subida. Verifica tu conexion o credenciales.
 )
 
-echo.
-echo =========================================================
-echo [EXITO] Proceso terminado.
-echo Tu aplicacion en Streamlit Cloud se actualizara automaticamente en 1-2 minutos.
-echo =========================================================
 echo.
 pause
