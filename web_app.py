@@ -3,14 +3,23 @@ import sys
 import tempfile
 import shutil
 import io
+import base64
 from pathlib import Path
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image
 
 # Configurar path
 BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
+
+# Componente interactivo de edicion visual
+INTERACTIVE_EDITOR_DIR = BASE_DIR / "frontend" / "interactive_pdf_editor"
+pdf_interactive_editor = components.declare_component(
+    "pdf_interactive_editor",
+    path=str(INTERACTIVE_EDITOR_DIR)
+)
 
 # Importar conversores y herramientas del sistema
 from converters.cad_converter import (
@@ -117,8 +126,11 @@ tabs = st.tabs([
 # PESTAÑA 1: EDITAR PDF (FIGURAS, FLECHAS, CÍRCULOS, RECTÁNGULOS, TEXTOS)
 # =========================================================================
 with tabs[0]:
-    st.header("🎨 Editor de PDF con Figuras Vectoriales")
-    st.caption("Inserta flechas, círculos, rectángulos, notas de texto, censura permanente (redaction) o sellos con previsualización en tiempo real.")
+    st.header("🎨 Editor Interactivo de PDF (Arrastrar, Escalar y Rotar Figuras)")
+    st.markdown(
+        "Haz clic en **➡️ Flecha**, **⭕ Círculo**, **⏹️ Rectángulo**, **🔤 Texto** o **⬛ Censura**. "
+        "**Arrastra directamente con el ratón** para mover las figuras, usa las **esquinas para cambiar el tamaño** y el **manejador superior para rotarlas**."
+    )
 
     edit_uploaded = st.file_uploader(
         "Carga el PDF que deseas editar:",
@@ -129,353 +141,97 @@ with tabs[0]:
     if edit_uploaded:
         pdf_bytes = edit_uploaded.getvalue()
         
-        # Inicializar sesión de figuras si no existe
-        if "pdf_figures" not in st.session_state:
-            st.session_state["pdf_figures"] = {}
+        # Inicializar sesión de figuras y página
+        if "editor_page_num" not in st.session_state:
+            st.session_state["editor_page_num"] = 1
 
         import pymupdf as fitz
         temp_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         total_p = len(temp_doc)
 
-        col_p1, col_p2, col_p3 = st.columns([1, 2, 1])
-        with col_p2:
-            current_page = st.number_input(
-                f"Página a editar (Total: {total_p}):", 
-                min_value=1, 
-                max_value=total_p, 
-                value=1,
-                step=1
-            ) - 1
+        # Barra de navegación de páginas
+        nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 2, 1, 1])
+        with nav_col1:
+            if st.button("⏮️ Primera", disabled=(st.session_state["editor_page_num"] <= 1), use_container_width=True):
+                st.session_state["editor_page_num"] = 1
+                st.rerun()
+        with nav_col2:
+            if st.button("◀️ Anterior", disabled=(st.session_state["editor_page_num"] <= 1), use_container_width=True):
+                st.session_state["editor_page_num"] = max(1, st.session_state["editor_page_num"] - 1)
+                st.rerun()
+        with nav_col3:
+            curr_sel = st.number_input(
+                "Página activa:",
+                min_value=1,
+                max_value=total_p,
+                value=st.session_state["editor_page_num"],
+                step=1,
+                label_visibility="collapsed"
+            )
+            if curr_sel != st.session_state["editor_page_num"]:
+                st.session_state["editor_page_num"] = curr_sel
+                st.rerun()
+        with nav_col4:
+            if st.button("Siguiente ▶️", disabled=(st.session_state["editor_page_num"] >= total_p), use_container_width=True):
+                st.session_state["editor_page_num"] = min(total_p, st.session_state["editor_page_num"] + 1)
+                st.rerun()
+        with nav_col5:
+            if st.button("Última ⏭️", disabled=(st.session_state["editor_page_num"] >= total_p), use_container_width=True):
+                st.session_state["editor_page_num"] = total_p
+                st.rerun()
 
+        current_page = st.session_state["editor_page_num"] - 1
         curr_page_obj = temp_doc[current_page]
         page_w = float(curr_page_obj.rect.width)
         page_h = float(curr_page_obj.rect.height)
         temp_doc.close()
 
-        if current_page not in st.session_state["pdf_figures"]:
-            st.session_state["pdf_figures"][current_page] = []
+        st.caption(f"📄 Editando **Página {current_page + 1} de {total_p}** | Tamaño: **{page_w:.0f} x {page_h:.0f} pt**")
 
-        col_left, col_right = st.columns([1, 1], gap="medium")
+        # Renderizar la página actual como imagen para fondo del canvas
+        page_pil = render_pdf_page_to_image(pdf_bytes, current_page, dpi=130)
+        img_buf = io.BytesIO()
+        page_pil.save(img_buf, format="PNG")
+        bg_b64 = "data:image/png;base64," + base64.b64encode(img_buf.getvalue()).decode("utf-8")
+        pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
 
-        with col_left:
-            st.subheader("🛠️ Herramientas de Figura")
-            shape_type = st.selectbox(
-                "Tipo de elemento a insertar:",
-                [
-                    "➡️ Flecha",
-                    "⭕ Círculo / Elipse",
-                    "⏹️ Rectángulo / Caja",
-                    "➖ Línea Recta",
-                    "🔤 Texto / Nota",
-                    "🖍️ Resaltador",
-                    "⬛ Censura Permanente (Redact)",
-                    "🖋️ Firma / Sello de Imagen"
-                ]
+        # 1. LIENZO INTERACTIVO WYSIWYG
+        editor_output = pdf_interactive_editor(
+            bg_image_base64=bg_b64,
+            pdf_base64=pdf_b64,
+            page_index=current_page,
+            page_width=page_w,
+            page_height=page_h,
+            key=f"visual_canvas_{current_page}"
+        )
+
+        # Procesar resultado enviado desde el canvas
+        if editor_output and isinstance(editor_output, dict):
+            if editor_output.get("overlay_png"):
+                overlay_data = editor_output["overlay_png"]
+                if "," in overlay_data:
+                    overlay_data = overlay_data.split(",")[1]
+                try:
+                    overlay_bytes = base64.b64decode(overlay_data)
+                    doc_edit = fitz.open(stream=pdf_bytes, filetype="pdf")
+                    p_edit = doc_edit[current_page]
+                    p_edit.insert_image(p_edit.rect, stream=overlay_bytes, overlay=True)
+                    saved_pdf = doc_edit.tobytes(deflate=True, garbage=3)
+                    doc_edit.close()
+                    st.session_state["saved_interactive_pdf"] = saved_pdf
+                except Exception as ex:
+                    st.error(f"Error procesando figuras: {ex}")
+
+        if "saved_interactive_pdf" in st.session_state:
+            st.success("🎉 ¡Documento PDF con figuras procesado correctamente!")
+            st.download_button(
+                label="📥 Descargar PDF Editado con Figuras",
+                data=st.session_state["saved_interactive_pdf"],
+                file_name=f"{Path(edit_uploaded.name).stem}_editado.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True
             )
-
-            new_elem = None
-
-            # --- FLECHA ---
-            if "Flecha" in shape_type:
-                st.markdown("**Configuración de la Flecha:**")
-                col_f1, col_f2 = st.columns(2)
-                with col_f1:
-                    arrow_mode = st.radio("Modo:", ["Dirección Rápida", "Coordenadas Libres"], horizontal=True)
-                    color_arrow = st.color_picker("Color de Flecha:", "#E53935")
-                    width_arrow = st.slider("Grosor:", 1.0, 10.0, 3.0, 0.5)
-                with col_f2:
-                    head_size = st.slider("Tamaño de Punta:", 8.0, 30.0, 14.0, 1.0)
-                    opacity_arrow = st.slider("Opacidad:", 0.1, 1.0, 1.0, 0.05)
-
-                if arrow_mode == "Dirección Rápida":
-                    col_d1, col_d2 = st.columns(2)
-                    with col_d1:
-                        orig_x = st.slider("Origen X:", 0.0, page_w, page_w * 0.25, 5.0)
-                        orig_y = st.slider("Origen Y:", 0.0, page_h, page_h * 0.25, 5.0)
-                    with col_d2:
-                        direction = st.selectbox(
-                            "Hacia dónde apunta:",
-                            ["➡️ Derecha", "⬅️ Izquierda", "⬇️ Abajo", "⬆️ Arriba", "↘️ Diagonal Derecha-Abajo", "↗️ Diagonal Derecha-Arriba"]
-                        )
-                        length = st.slider("Largo (pt):", 20.0, 350.0, 100.0, 10.0)
-
-                    end_x, end_y = orig_x, orig_y
-                    if "Derecha" in direction and "Diagonal" not in direction:
-                        end_x = orig_x + length
-                    elif "Izquierda" in direction:
-                        end_x = orig_x - length
-                    elif "Abajo" in direction and "Diagonal" not in direction:
-                        end_y = orig_y + length
-                    elif "Arriba" in direction and "Diagonal" not in direction:
-                        end_y = orig_y - length
-                    elif "Derecha-Abajo" in direction:
-                        end_x = orig_x + length * 0.707
-                        end_y = orig_y + length * 0.707
-                    elif "Derecha-Arriba" in direction:
-                        end_x = orig_x + length * 0.707
-                        end_y = orig_y - length * 0.707
-
-                    new_elem = {
-                        "type": "arrow",
-                        "x1": orig_x, "y1": orig_y,
-                        "x2": end_x, "y2": end_y,
-                        "color": color_arrow,
-                        "width": width_arrow,
-                        "head_size": head_size,
-                        "opacity": opacity_arrow
-                    }
-                else:
-                    col_c1, col_c2 = st.columns(2)
-                    with col_c1:
-                        x1 = st.slider("Punto Inicial X:", 0.0, page_w, 50.0, 5.0)
-                        y1 = st.slider("Punto Inicial Y:", 0.0, page_h, 50.0, 5.0)
-                    with col_c2:
-                        x2 = st.slider("Punta Final X:", 0.0, page_w, 150.0, 5.0)
-                        y2 = st.slider("Punta Final Y:", 0.0, page_h, 150.0, 5.0)
-                    new_elem = {
-                        "type": "arrow",
-                        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                        "color": color_arrow, "width": width_arrow,
-                        "head_size": head_size, "opacity": opacity_arrow
-                    }
-
-            # --- CÍRCULO / ELIPSE ---
-            elif "Círculo" in shape_type:
-                st.markdown("**Configuración del Círculo:**")
-                col_c1, col_c2 = st.columns(2)
-                with col_c1:
-                    cx = st.slider("Centro X:", 0.0, page_w, page_w * 0.5, 5.0)
-                    cy = st.slider("Centro Y:", 0.0, page_h, page_h * 0.5, 5.0)
-                    rad = st.slider("Radio:", 10.0, 250.0, 50.0, 5.0)
-                with col_c2:
-                    color_circle = st.color_picker("Color de Borde:", "#1E88E5")
-                    width_circle = st.slider("Grosor de Borde:", 1.0, 10.0, 2.5, 0.5)
-                    use_fill = st.checkbox("Relleno Translúcido", value=False)
-                    fill_c = st.color_picker("Color de Relleno:", "#90CAF9") if use_fill else None
-                    fill_op = st.slider("Opacidad de Relleno:", 0.05, 1.0, 0.3, 0.05) if use_fill else 0.0
-
-                new_elem = {
-                    "type": "circle",
-                    "cx": cx, "cy": cy, "radius": rad,
-                    "color": color_circle,
-                    "fill_color": fill_c,
-                    "width": width_circle,
-                    "fill_opacity": fill_op
-                }
-
-            # --- RECTÁNGULO ---
-            elif "Rectángulo" in shape_type:
-                st.markdown("**Configuración del Rectángulo:**")
-                col_r1, col_r2 = st.columns(2)
-                with col_r1:
-                    rx = st.slider("Posición X:", 0.0, page_w, 50.0, 5.0)
-                    ry = st.slider("Posición Y:", 0.0, page_h, 50.0, 5.0)
-                    rw = st.slider("Ancho:", 20.0, page_w, 150.0, 5.0)
-                    rh = st.slider("Alto:", 20.0, page_h, 80.0, 5.0)
-                with col_r2:
-                    color_rect = st.color_picker("Color de Borde:", "#43A047")
-                    width_rect = st.slider("Grosor:", 1.0, 10.0, 2.0, 0.5)
-                    use_fill_r = st.checkbox("Relleno Translúcido", value=False, key="rect_fill_check")
-                    fill_r_c = st.color_picker("Color de Relleno:", "#A5D6A7") if use_fill_r else None
-                    fill_r_op = st.slider("Opacidad de Relleno:", 0.05, 1.0, 0.3, 0.05) if use_fill_r else 0.0
-
-                new_elem = {
-                    "type": "rect",
-                    "x": rx, "y": ry, "w": rw, "h": rh,
-                    "color": color_rect,
-                    "fill_color": fill_r_c,
-                    "width": width_rect,
-                    "fill_opacity": fill_r_op
-                }
-
-            # --- LÍNEA ---
-            elif "Línea" in shape_type:
-                st.markdown("**Configuración de Línea:**")
-                col_l1, col_l2 = st.columns(2)
-                with col_l1:
-                    lx1 = st.slider("X1:", 0.0, page_w, 50.0, 5.0)
-                    ly1 = st.slider("Y1:", 0.0, page_h, 100.0, 5.0)
-                with col_l2:
-                    lx2 = st.slider("X2:", 0.0, page_w, 250.0, 5.0)
-                    ly2 = st.slider("Y2:", 0.0, page_h, 100.0, 5.0)
-                color_line = st.color_picker("Color:", "#212121")
-                width_line = st.slider("Grosor:", 1.0, 10.0, 2.0, 0.5)
-                is_dashed = st.checkbox("Línea Punteada", value=False)
-                new_elem = {
-                    "type": "line",
-                    "x1": lx1, "y1": ly1, "x2": lx2, "y2": ly2,
-                    "color": color_line, "width": width_line, "dashed": is_dashed
-                }
-
-            # --- TEXTO ---
-            elif "Texto" in shape_type:
-                st.markdown("**Configuración de Texto:**")
-                txt_content = st.text_input("Texto a insertar:", "Nota importante de revisión")
-                col_t1, col_t2 = st.columns(2)
-                with col_t1:
-                    tx = st.slider("Posición X:", 0.0, page_w, 60.0, 5.0)
-                    ty = st.slider("Posición Y (Línea base):", 0.0, page_h, 100.0, 5.0)
-                    tsize = st.slider("Tamaño Fuente:", 8, 48, 14)
-                with col_t2:
-                    tcolor = st.color_picker("Color del Texto:", "#D32F2F")
-                    use_bg = st.checkbox("Fondo de color para destacar", value=True)
-                    bg_c = st.color_picker("Color de Fondo:", "#FFF9C4") if use_bg else None
-                    is_bold = st.checkbox("Negrita", value=True)
-                    is_italic = st.checkbox("Cursiva", value=False)
-
-                new_elem = {
-                    "type": "text",
-                    "x": tx, "y": ty, "text": txt_content,
-                    "fontsize": tsize, "color": tcolor,
-                    "bg_color": bg_c, "bold": is_bold, "italic": is_italic
-                }
-
-            # --- RESALTADOR ---
-            elif "Resaltador" in shape_type:
-                st.markdown("**Banda de Resaltado:**")
-                col_h1, col_h2 = st.columns(2)
-                with col_h1:
-                    hx = st.slider("X:", 0.0, page_w, 50.0, 5.0)
-                    hy = st.slider("Y:", 0.0, page_h, 150.0, 5.0)
-                with col_h2:
-                    hw = st.slider("Ancho:", 20.0, page_w, 200.0, 5.0)
-                    hh = st.slider("Alto:", 10.0, 80.0, 20.0, 2.0)
-                hcolor = st.selectbox("Color de resaltado:", ["#FFEB3B (Amarillo)", "#A5D6A7 (Verde)", "#80D8FF (Celeste)", "#F48FB1 (Rosa)"])
-                hcolor_hex = hcolor.split()[0]
-                new_elem = {
-                    "type": "highlight",
-                    "x": hx, "y": hy, "w": hw, "h": hh,
-                    "color": hcolor_hex
-                }
-
-            # --- CENSURA PERMANENTE (REDACT) ---
-            elif "Censura" in shape_type:
-                st.markdown("**Censura Permanente (Redaction):**")
-                st.info("ℹ️ Elimina de raíz e irreversiblemente el texto y gráficos bajo el rectángulo negro.")
-                col_red1, col_red2 = st.columns(2)
-                with col_red1:
-                    cx = st.slider("X:", 0.0, page_w, 50.0, 5.0)
-                    cy = st.slider("Y:", 0.0, page_h, 120.0, 5.0)
-                with col_red2:
-                    cw = st.slider("Ancho:", 20.0, page_w, 180.0, 5.0)
-                    ch = st.slider("Alto:", 10.0, 100.0, 30.0, 2.0)
-                red_text = st.text_input("Texto de censura (opcional):", "")
-                new_elem = {
-                    "type": "redact",
-                    "x": cx, "y": cy, "w": cw, "h": ch,
-                    "color": "#000000", "text": red_text
-                }
-
-            # --- FIRMA / SELLO ---
-            elif "Firma" in shape_type:
-                st.markdown("**Estampar Firma o Sello:**")
-                stamp_file = st.file_uploader("Cargar imagen de firma o sello (.png transparente recomendado):", type=["png", "jpg", "jpeg"])
-                col_s1, col_s2 = st.columns(2)
-                with col_s1:
-                    sx = st.slider("X:", 0.0, page_w, page_w * 0.6, 5.0)
-                    sy = st.slider("Y:", 0.0, page_h, page_h * 0.8, 5.0)
-                with col_s2:
-                    sw = st.slider("Ancho:", 30.0, 300.0, 120.0, 5.0)
-                    sh = st.slider("Alto:", 20.0, 200.0, 60.0, 5.0)
-                if stamp_file:
-                    new_elem = {
-                        "type": "signature",
-                        "x": sx, "y": sy, "w": sw, "h": sh,
-                        "data": stamp_file.getvalue()
-                    }
-
-            # Botones de agregar y gestión
-            col_b1, col_b2 = st.columns(2)
-            with col_b1:
-                if st.button("➕ Agregar Figura a la Página", type="primary", use_container_width=True):
-                    if new_elem:
-                        st.session_state["pdf_figures"][current_page].append(new_elem)
-                        st.success(f"Figura '{shape_type}' agregada.")
-                        st.rerun()
-            with col_b2:
-                if st.button("↩️ Deshacer última figura", use_container_width=True):
-                    if st.session_state["pdf_figures"].get(current_page):
-                        st.session_state["pdf_figures"][current_page].pop()
-                        st.rerun()
-
-            figs_curr = st.session_state["pdf_figures"].get(current_page, [])
-            st.caption(f"📌 Figuras activas en esta página: **{len(figs_curr)}**")
-
-            if figs_curr:
-                with st.expander("Ver lista de figuras de esta página"):
-                    for idx, f in enumerate(figs_curr):
-                        st.write(f"#{idx + 1}: Tipo `{f['type']}` | Color: `{f.get('color', 'N/A')}`")
-                    if st.button("🗑️ Borrar todas las figuras de esta página"):
-                        st.session_state["pdf_figures"][current_page] = []
-                        st.rerun()
-
-            st.markdown("---")
-            if st.button("💾 Guardar y Descargar PDF Editado con Figuras", type="primary", use_container_width=True):
-                with st.spinner("Generando documento PDF con figuras vectoriales..."):
-                    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f_out:
-                        temp_out_p = f_out.name
-                    apply_all_figures_to_pdf(pdf_bytes, temp_out_p, st.session_state["pdf_figures"])
-                    with open(temp_out_p, "rb") as res_f:
-                        edited_bytes = res_f.read()
-                    os.unlink(temp_out_p)
-
-                st.success("🎉 ¡PDF generado exitosamente!")
-                st.download_button(
-                    label="📥 Descargar PDF Editado",
-                    data=edited_bytes,
-                    file_name=f"{Path(edit_uploaded.name).stem}_editado.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-
-        with col_right:
-            st.subheader(f"👁️ Previsualización en Vivo (Página {current_page + 1} de {total_p})")
-            st.caption(f"Dimensiones de página: **{page_w:.1f} x {page_h:.1f} pt** (Aprox. {page_w * 0.3527:.0f} x {page_h * 0.3527:.0f} mm)")
-
-            # Renderizar página con las figuras aplicadas
-            preview_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-            p_obj = preview_doc[current_page]
-            
-            # Dibujar temporalmente figuras en la página de preview
-            for elem in st.session_state["pdf_figures"].get(current_page, []):
-                et = elem.get("type", "")
-                if et == "arrow":
-                    draw_vector_arrow(p_obj, (elem["x1"], elem["y1"]), (elem["x2"], elem["y2"]),
-                                      color=elem.get("color", "#E53935"), width=elem.get("width", 3.0),
-                                      head_size=elem.get("head_size", 14.0), opacity=elem.get("opacity", 1.0))
-                elif et == "circle":
-                    cx, cy, r = elem["cx"], elem["cy"], elem["radius"]
-                    draw_vector_circle(p_obj, (cx - r, cy - r, cx + r, cy + r),
-                                       color=elem.get("color", "#1E88E5"), fill_color=elem.get("fill_color"),
-                                       width=elem.get("width", 2.0), fill_opacity=elem.get("fill_opacity", 0.0))
-                elif et == "rect":
-                    draw_vector_rect(p_obj, (elem["x"], elem["y"], elem["x"] + elem["w"], elem["y"] + elem["h"]),
-                                     color=elem.get("color", "#43A047"), fill_color=elem.get("fill_color"),
-                                     width=elem.get("width", 2.0), fill_opacity=elem.get("fill_opacity", 0.0))
-                elif et == "line":
-                    draw_vector_line(p_obj, (elem["x1"], elem["y1"]), (elem["x2"], elem["y2"]),
-                                     color=elem.get("color", "#000000"), width=elem.get("width", 2.0),
-                                     dashed=elem.get("dashed", False))
-                elif et == "text":
-                    add_vector_text(p_obj, (elem["x"], elem["y"]), elem.get("text", ""),
-                                    fontsize=elem.get("fontsize", 14.0), color=elem.get("color", "#000000"),
-                                    bg_color=elem.get("bg_color"), bold=elem.get("bold", False),
-                                    italic=elem.get("italic", False))
-                elif et == "highlight":
-                    draw_vector_rect(p_obj, (elem["x"], elem["y"], elem["x"] + elem["w"], elem["y"] + elem["h"]),
-                                     color=elem.get("color", "#FFEB3B"), fill_color=elem.get("color", "#FFEB3B"),
-                                     width=0, opacity=0.5, fill_opacity=0.5)
-                elif et == "redact":
-                    add_permanent_redaction(p_obj, (elem["x"], elem["y"], elem["x"] + elem["w"], elem["y"] + elem["h"]),
-                                           fill_color=elem.get("color", "#000000"), text=elem.get("text", ""))
-                elif et == "signature" and elem.get("data"):
-                    add_image_overlay(p_obj, (elem["x"], elem["y"], elem["x"] + elem["w"], elem["y"] + elem["h"]), elem["data"])
-
-            pix = p_obj.get_pixmap(dpi=130)
-            preview_img = Image.open(io.BytesIO(pix.tobytes("png")))
-            preview_doc.close()
-
-            st.image(preview_img, use_container_width=True, caption=f"Página {current_page + 1} renderizada con figuras")
 
 # =========================================================================
 # PESTAÑA 2: CONVERTIDOR UNIVERSAL (CAD, OFFICE, IMÁGENES)

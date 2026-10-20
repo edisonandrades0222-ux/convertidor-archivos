@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editor Interactivo de PDF</title>
+  <!-- Fabric.js para manipulación visual directa de figuras (drag, resize, rotate) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <!-- PDF-Lib para exportación y descarga instantánea en el navegador -->
+  <script src="https://unpkg.com/pdf-lib@1.17.9/dist/pdf-lib.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background-color: #0e1117;
+      color: #fafafa;
+      padding: 10px;
+      overflow-x: hidden;
+    }
+    .editor-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    /* Barra de herramientas */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      background: #262730;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #363842;
+    }
+    .tool-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-right: 1px solid #41444e;
+      padding-right: 10px;
+      margin-right: 4px;
+    }
+    .tool-group:last-child {
+      border-right: none;
+      padding-right: 0;
+      margin-right: 0;
+    }
+    button.tool-btn {
+      background: #1e1f26;
+      color: #e0e0e0;
+      border: 1px solid #41444e;
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    button.tool-btn:hover {
+      background: #363842;
+      border-color: #3b8ed0;
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+    button.tool-btn.active {
+      background: #3b8ed0;
+      border-color: #2b74b0;
+      color: #ffffff;
+    }
+    button.btn-action {
+      background: #ff4b4b;
+      color: white;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button.btn-action:hover {
+      opacity: 0.9;
+    }
+    button.btn-save {
+      background: #2e7d32;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    button.btn-save:hover {
+      background: #1b5e20;
+      transform: scale(1.02);
+    }
+    .style-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #ccc;
+    }
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      cursor: pointer;
+      background: transparent;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch {
+      border: 1px solid #555;
+      border-radius: 4px;
+    }
+    input[type="range"] {
+      width: 70px;
+      cursor: pointer;
+    }
+    /* Área de dibujo */
+    .canvas-wrapper {
+      position: relative;
+      border: 2px solid #363842;
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 0 auto;
+      background: #18191f;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    }
+    .instructions-bar {
+      font-size: 12px;
+      color: #9e9e9e;
+      background: #1a1c23;
+      padding: 6px 12px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .instructions-bar strong {
+      color: #64b5f6;
+    }
+  </style>
+</head>
+<body>
+
+<div class="editor-container">
+  <!-- Barra de Instrucciones y Tips -->
+  <div class="instructions-bar">
+    <span>💡 <strong>Instrucciones:</strong> Haz clic en una figura para agregarla. <strong>Arrastra con el mouse para moverla</strong>, usa las <strong>esquinas para cambiar el tamaño</strong> o el manejador superior para <strong>rotarla</strong>.</span>
+    <span>Atajo: <kbd style="background:#333;padding:2px 5px;border-radius:3px;">Supr</kbd> para borrar</span>
+  </div>
+
+  <!-- Barra de Herramientas Principal -->
+  <div class="toolbar">
+    <!-- Grupo 1: Herramientas de Figuras -->
+    <div class="tool-group">
+      <button class="tool-btn active" id="btn-select" title="Seleccionar y mover figuras">
+        <span>🖱️</span> Mover
+      </button>
+      <button class="tool-btn" id="btn-arrow" title="Insertar Flecha direccionable">
+        <span>➡️</span> Flecha
+      </button>
+      <button class="tool-btn" id="btn-circle" title="Insertar Círculo o Elipse">
+        <span>⭕</span> Círculo
+      </button>
+      <button class="tool-btn" id="btn-rect" title="Insertar Rectángulo o Caja">
+        <span>⏹️</span> Rectángulo
+      </button>
+      <button class="tool-btn" id="btn-line" title="Insertar Línea recta">
+        <span>➖</span> Línea
+      </button>
+      <button class="tool-btn" id="btn-text" title="Insertar Texto editable">
+        <span>🔤</span> Texto
+      </button>
+      <button class="tool-btn" id="btn-redact" title="Insertar Censura permanente (Caja negra)">
+        <span>⬛</span> Censura
+      </button>
+      <button class="tool-btn" id="btn-draw" title="Dibujar a mano alzada con el mouse">
+        <span>🖍️</span> Lápiz
+      </button>
+    </div>
+
+    <!-- Grupo 2: Opciones de Estilo -->
+    <div class="tool-group">
+      <div class="style-item" title="Color de borde o trazo">
+        <span>Borde:</span>
+        <input type="color" id="stroke-color" value="#E53935">
+      </div>
+      <div class="style-item" title="Color de relleno">
+        <span>Relleno:</span>
+        <input type="color" id="fill-color" value="#90CAF9">
+        <label style="display:flex;align-items:center;gap:3px;cursor:pointer;">
+          <input type="checkbox" id="fill-transparent" checked>
+          <span>Vacío</span>
+        </label>
+      </div>
+      <div class="style-item" title="Grosor de línea en píxeles">
+        <span>Grosor:</span>
+        <input type="range" id="stroke-width" min="1" max="15" value="3">
+        <span id="stroke-width-val">3</span>
+      </div>
+      <div class="style-item" title="Opacidad / Transparencia">
+        <span>Opacidad:</span>
+        <input type="range" id="opacity-slider" min="10" max="100" value="100">
+        <span id="opacity-val">100%</span>
+      </div>
+    </div>
+
+    <!-- Grupo 3: Acciones -->
+    <div class="tool-group">
+      <button class="tool-btn" id="btn-delete" title="Eliminar figura seleccionada">
+        <span>🗑️</span> Borrar
+      </button>
+      <button class="tool-btn" id="btn-clear" title="Limpiar todas las figuras">
+        <span>🧹</span> Limpiar
+      </button>
+      <button class="btn-save" id="btn-save" title="Guardar cambios y descargar PDF">
+        <span>💾</span> Guardar en PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- Contenedor del Canvas -->
+  <div class="canvas-wrapper" id="canvas-container">
+    <canvas id="pdf-canvas"></canvas>
+  </div>
+</div>
+
+<script>
+  // =========================================================================
+  // COMUNICACIÓN CON STREAMLIT
+  // =========================================================================
+  function sendToStreamlit(value) {
+    window.parent.postMessage({
+      isStreamlitMessage: true,
+      type: "streamlit:setComponentValue",
+      value: value
+    }, "*");
+  }
+
+  function setFrameHeight(height) {
+    window.parent.postMessage({
+      isStreamlitMessage: true,
+      type: "streamlit:setFrameHeight",
+      height: height || (document.body.scrollHeight + 30)
+    }, "*");
+  }
+
+  // Notificar a Streamlit que el componente está listo
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type: "streamlit:componentReady",
+    apiVersion: 1
+  }, "*");
+
+  // =========================================================================
+  // ESTADO Y CONFIGURACIÓN DEL CANVAS
+  // =========================================================================
+  let canvas = null;
+  let rawPdfBytes = null;
+  let pageIndex = 0;
+  let pdfPageWidth = 595;
+  let pdfPageHeight = 842;
+  let canvasScale = 1.0;
+
+  // Elementos UI
+  const strokeColorInput = document.getElementById("stroke-color");
+  const fillColorInput = document.getElementById("fill-color");
+  const fillTransparentCheck = document.getElementById("fill-transparent");
+  const strokeWidthSlider = document.getElementById("stroke-width");
+  const strokeWidthVal = document.getElementById("stroke-width-val");
+  const opacitySlider = document.getElementById("opacity-slider");
+  const opacityVal = document.getElementById("opacity-val");
+
+  strokeWidthSlider.addEventListener("input", (e) => {
+    strokeWidthVal.textContent = e.target.value;
+    updateActiveObjectStyle();
+  });
+  opacitySlider.addEventListener("input", (e) => {
+    opacityVal.textContent = e.target.value + "%";
+    updateActiveObjectStyle();
+  });
+  strokeColorInput.addEventListener("input", updateActiveObjectStyle);
+  fillColorInput.addEventListener("input", updateActiveObjectStyle);
+  fillTransparentCheck.addEventListener("change", updateActiveObjectStyle);
+
+  function getStrokeColor() {
+    return strokeColorInput.value;
+  }
+  function getFillColor() {
+    if (fillTransparentCheck.checked) return "transparent";
+    const hex = fillColorInput.value;
+    return hex;
+  }
+  function getStrokeWidth() {
+    return parseInt(strokeWidthSlider.value, 10);
+  }
+  function getOpacity() {
+    return parseInt(opacitySlider.value, 10) / 100.0;
+  }
+
+  function updateActiveObjectStyle() {
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (!active) return;
+
+    if (active.type === "arrow") {
+      // Flecha (grupo o línea + cabeza)
+      const color = getStrokeColor();
+      const op = getOpacity();
+      const sw = getStrokeWidth();
+      active.set({ opacity: op });
+      active.getObjects().forEach(obj => {
+        if (obj.type === "line") {
+          obj.set({ stroke: color, strokeWidth: sw });
+        } else if (obj.type === "triangle") {
+          obj.set({ fill: color, stroke: color });
+        }
+      });
+    } else if (active.type === "i-text") {
+      active.set({
+        fill: getStrokeColor(),
+        opacity: getOpacity()
+      });
+    } else {
+      active.set({
+        stroke: getStrokeColor(),
+        fill: getFillColor(),
+        strokeWidth: getStrokeWidth(),
+        opacity: getOpacity()
+      });
+    }
+    canvas.renderAll();
+  }
+
+  // =========================================================================
+  // CREACIÓN DE FIGURAS DIRECTAMENTE EN EL CANVAS
+  // =========================================================================
+
+  // 1. FLECHA VECTORIAL INTERACTIVA
+  function addArrow() {
+    const sw = getStrokeWidth();
+    const color = getStrokeColor();
+    const op = getOpacity();
+
+    // Crear cuerpo de línea
+    const line = new fabric.Line([0, 0, 160, 0], {
+      stroke: color,
+      strokeWidth: sw,
+      originX: 'center',
+      originY: 'center',
+      selectable: false
+    });
+
+    // Crear punta triangular
+    const headSize = Math.max(14, sw * 4);
+    const head = new fabric.Triangle({
+      left: 80,
+      top: 0,
+      angle: 90,
+      width: headSize,
+      height: headSize,
+      fill: color,
+      stroke: color,
+      originX: 'center',
+      originY: 'center',
+      selectable: false
+    });
+
+    const arrowGroup = new fabric.Group([line, head], {
+      left: 100,
+      top: 100,
+      type: 'arrow',
+      opacity: op,
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+
+    canvas.add(arrowGroup);
+    canvas.setActiveObject(arrowGroup);
+    canvas.renderAll();
+  }
+
+  // 2. CÍRCULO / ELIPSE
+  function addCircle() {
+    const circle = new fabric.Circle({
+      left: 120,
+      top: 120,
+      radius: 50,
+      stroke: getStrokeColor(),
+      fill: getFillColor(),
+      strokeWidth: getStrokeWidth(),
+      opacity: getOpacity(),
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+    canvas.add(circle);
+    canvas.setActiveObject(circle);
+    canvas.renderAll();
+  }
+
+  // 3. RECTÁNGULO
+  function addRect() {
+    const rect = new fabric.Rect({
+      left: 100,
+      top: 100,
+      width: 150,
+      height: 90,
+      stroke: getStrokeColor(),
+      fill: getFillColor(),
+      strokeWidth: getStrokeWidth(),
+      opacity: getOpacity(),
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+    canvas.add(rect);
+    canvas.setActiveObject(rect);
+    canvas.renderAll();
+  }
+
+  // 4. LÍNEA RECTA
+  function addLine() {
+    const line = new fabric.Line([100, 100, 300, 100], {
+      stroke: getStrokeColor(),
+      strokeWidth: getStrokeWidth(),
+      opacity: getOpacity(),
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+    canvas.add(line);
+    canvas.setActiveObject(line);
+    canvas.renderAll();
+  }
+
+  // 5. TEXTO EDITABLE
+  function addText() {
+    const text = new fabric.IText("Haz doble clic para editar", {
+      left: 120,
+      top: 120,
+      fontFamily: 'Helvetica, Arial, sans-serif',
+      fontSize: 18,
+      fill: getStrokeColor(),
+      opacity: getOpacity(),
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    canvas.renderAll();
+  }
+
+  // 6. CENSURA PERMANENTE (REDACTION)
+  function addRedaction() {
+    const redactBox = new fabric.Rect({
+      left: 100,
+      top: 100,
+      width: 180,
+      height: 35,
+      stroke: '#000000',
+      fill: '#000000',
+      strokeWidth: 1,
+      opacity: 1.0,
+      cornerColor: '#ff4b4b',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+    canvas.add(redactBox);
+    canvas.setActiveObject(redactBox);
+    canvas.renderAll();
+  }
+
+  // Conectar botones de herramientas
+  document.getElementById("btn-arrow").onclick = () => { setMode("select"); addArrow(); };
+  document.getElementById("btn-circle").onclick = () => { setMode("select"); addCircle(); };
+  document.getElementById("btn-rect").onclick = () => { setMode("select"); addRect(); };
+  document.getElementById("btn-line").onclick = () => { setMode("select"); addLine(); };
+  document.getElementById("btn-text").onclick = () => { setMode("select"); addText(); };
+  document.getElementById("btn-redact").onclick = () => { setMode("select"); addRedaction(); };
+
+  document.getElementById("btn-draw").onclick = () => {
+    setMode("draw");
+  };
+  document.getElementById("btn-select").onclick = () => {
+    setMode("select");
+  };
+
+  function setMode(mode) {
+    if (!canvas) return;
+    if (mode === "draw") {
+      canvas.isDrawingMode = true;
+      canvas.freeDrawingBrush.color = getStrokeColor();
+      canvas.freeDrawingBrush.width = getStrokeWidth();
+      document.getElementById("btn-draw").classList.add("active");
+      document.getElementById("btn-select").classList.remove("active");
+    } else {
+      canvas.isDrawingMode = false;
+      document.getElementById("btn-draw").classList.remove("active");
+      document.getElementById("btn-select").classList.add("active");
+    }
+  }
+
+  // Eliminar seleccionado
+  document.getElementById("btn-delete").onclick = deleteSelected;
+  function deleteSelected() {
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active) {
+      canvas.remove(active);
+      canvas.discardActiveObject();
+      canvas.renderAll();
+    }
+  }
+
+  // Limpiar todo
+  document.getElementById("btn-clear").onclick = () => {
+    if (!canvas) return;
+    if (confirm("¿Deseas borrar todas las figuras añadidas a esta página?")) {
+      const bg = canvas.backgroundImage;
+      canvas.clear();
+      canvas.backgroundImage = bg;
+      canvas.renderAll();
+    }
+  };
+
+  // Teclado: Suprimir o Backspace para borrar
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Delete" || e.key === "Backspace") {
+      const active = canvas ? canvas.getActiveObject() : null;
+      // Solo si no estamos escribiendo dentro de un texto
+      if (active && (!active.isEditing)) {
+        deleteSelected();
+      }
+    }
+  });
+
+  // =========================================================================
+  // GUARDAR Y DESCARGAR PDF CON FIGURAS
+  // =========================================================================
+  document.getElementById("btn-save").onclick = async () => {
+    if (!canvas) return;
+    const btn = document.getElementById("btn-save");
+    btn.innerHTML = "⏳ Generando PDF...";
+    btn.disabled = true;
+
+    try {
+      // 1. Ocultar fondo para exportar ÚNICAMENTE las figuras en alta resolución transparente
+      const bg = canvas.backgroundImage;
+      canvas.backgroundImage = null;
+      canvas.renderAll();
+
+      // Exportar overlay transparente en tamaño nativo del PDF
+      const overlayDataUrl = canvas.toDataURL({
+        format: "png",
+        multiplier: 1.0 / canvasScale
+      });
+
+      // Restaurar fondo en pantalla
+      canvas.backgroundImage = bg;
+      canvas.renderAll();
+
+      // 2. Si tenemos los bytes del PDF original, usar PDF-Lib para estampar la página directamente
+      if (rawPdfBytes && window.PDFLib) {
+        const { PDFDocument } = window.PDFLib;
+        const pdfDoc = await PDFDocument.load(rawPdfBytes);
+        const pages = pdfDoc.getPages();
+        const targetPage = pages[pageIndex] || pages[0];
+
+        // Convertir overlay base64 a imagen PNG incrustada
+        const pngImage = await pdfDoc.embedPng(overlayDataUrl);
+        const { width, height } = targetPage.getSize();
+
+        targetPage.drawImage(pngImage, {
+          x: 0,
+          y: 0,
+          width: width,
+          height: height
+        });
+
+        const modifiedBytes = await pdfDoc.save();
+
+        // Disparar descarga en el navegador del usuario inmediatamente
+        const blob = new Blob([modifiedBytes], { type: "application/pdf" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "documento_editado_con_figuras.pdf";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Enviar a Streamlit para sincronización de sesión
+        sendToStreamlit({
+          status: "success",
+          overlay_png: overlayDataUrl,
+          page_index: pageIndex
+        });
+      } else {
+        // Enviar a Streamlit como fallback
+        sendToStreamlit({
+          status: "overlay_ready",
+          overlay_png: overlayDataUrl,
+          page_index: pageIndex
+        });
+      }
+    } catch (err) {
+      console.error("Error al guardar PDF:", err);
+      alert("Error al generar el PDF: " + err.message);
+    } finally {
+      btn.innerHTML = "<span>💾</span> Guardar en PDF";
+      btn.disabled = false;
+    }
+  };
+
+  // =========================================================================
+  // RENDERIZADO CUANDO STREAMLIT ENVÍA DATOS
+  // =========================================================================
+  window.addEventListener("message", (event) => {
+    if (!event.data || event.data.type !== "streamlit:render") return;
+
+    const args = event.data.args;
+    if (!args) return;
+
+    pageIndex = args.page_index || 0;
+    pdfPageWidth = args.page_width || 595;
+    pdfPageHeight = args.page_height || 842;
+
+    // Convertir PDF base64 a Uint8Array si viene de Python
+    if (args.pdf_base64) {
+      try {
+        const binaryStr = atob(args.pdf_base64);
+        const len = binaryStr.length;
+        rawPdfBytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          rawPdfBytes[i] = binaryStr.charCodeAt(i);
+        }
+      } catch (e) {
+        console.error("Error al decodificar PDF base64:", e);
+      }
+    } else if (args.pdf_bytes_array) {
+      rawPdfBytes = new Uint8Array(args.pdf_bytes_array);
+    }
+
+    const bgImageSrc = args.bg_image_base64;
+    const maxDisplayWidth = Math.min(window.innerWidth - 40, 800);
+    canvasScale = maxDisplayWidth / pdfPageWidth;
+    const displayW = Math.round(pdfPageWidth * canvasScale);
+    const displayH = Math.round(pdfPageHeight * canvasScale);
+
+    if (!canvas) {
+      canvas = new fabric.Canvas("pdf-canvas", {
+        width: displayW,
+        height: displayH,
+        selection: true
+      });
+
+      // Modificar estilo de los controles de selección
+      fabric.Object.prototype.set({
+        transparentCorners: false,
+        cornerColor: '#3b8ed0',
+        cornerStrokeColor: '#ffffff',
+        borderColor: '#3b8ed0',
+        cornerSize: 10,
+        padding: 5
+      });
+    } else {
+      canvas.setWidth(displayW);
+      canvas.setHeight(displayH);
+    }
+
+    if (bgImageSrc) {
+      fabric.Image.fromURL(bgImageSrc, (img) => {
+        img.set({
+          scaleX: displayW / img.width,
+          scaleY: displayH / img.height,
+          originX: 'left',
+          originY: 'top',
+          selectable: false,
+          evented: false
+        });
+        canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+        setFrameHeight(displayH + 140);
+      });
+    } else {
+      setFrameHeight(displayH + 140);
+    }
+  });
+</script>
+
+</body>
+</html>
