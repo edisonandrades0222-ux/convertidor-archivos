@@ -249,6 +249,46 @@ def test_pdf_editor_overlay_rotation_derotation():
         assert (r > 200 and g < 50 and b < 50), f"Fallo de posicionamiento en rotación {rot}: RGB=({r},{g},{b})"
         doc.close()
 
+def test_pdf_page_byte_tools(sample_pdf):
+    from converters.pdf_advanced_tools import (
+        rotate_page_bytes, insert_blank_page_bytes, duplicate_page_bytes,
+        delete_page_bytes, extract_single_page_bytes
+    )
+    import pymupdf as fitz
+
+    with open(sample_pdf, "rb") as f:
+        pdf_bytes = f.read()
+
+    # 1. Rotar página
+    rot_bytes = rotate_page_bytes(pdf_bytes, 0, 90)
+    doc = fitz.open(stream=rot_bytes, filetype="pdf")
+    assert doc[0].rotation == 90
+    doc.close()
+
+    # 2. Insertar página en blanco
+    ins_bytes = insert_blank_page_bytes(pdf_bytes, 0)
+    doc = fitz.open(stream=ins_bytes, filetype="pdf")
+    assert len(doc) == 2
+    doc.close()
+
+    # 3. Duplicar página
+    dup_bytes = duplicate_page_bytes(ins_bytes, 0)
+    doc = fitz.open(stream=dup_bytes, filetype="pdf")
+    assert len(doc) == 3
+    doc.close()
+
+    # 4. Eliminar página
+    del_bytes = delete_page_bytes(dup_bytes, 0)
+    doc = fitz.open(stream=del_bytes, filetype="pdf")
+    assert len(doc) == 2
+    doc.close()
+
+    # 5. Extraer página individual
+    ext_bytes = extract_single_page_bytes(del_bytes, 0)
+    doc = fitz.open(stream=ext_bytes, filetype="pdf")
+    assert len(doc) == 1
+    doc.close()
+
 if __name__ == "__main__":
     ret = pytest.main([__file__, "-v", "-s"])
     sys.exit(ret)

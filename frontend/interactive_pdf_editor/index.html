@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Editor Interactivo de PDF</title>
+  <title>Editor Interactivo de PDF - Suite iLovePDF</title>
   <!-- Fabric.js para manipulación visual directa de figuras (drag, resize, rotate) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
   <style>
@@ -16,33 +16,39 @@
     body {
       background-color: #0e1117;
       color: #fafafa;
-      padding: 10px;
+      padding: 8px;
       overflow-x: hidden;
     }
     .editor-container {
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      max-width: 1000px;
+      gap: 10px;
+      max-width: 1100px;
       margin: 0 auto;
     }
-    /* Barra de herramientas */
-    .toolbar {
+    /* Barras de herramientas */
+    .toolbar-container {
+      background: #1e1f26;
+      border: 1px solid #363842;
+      border-radius: 10px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+    .toolbar-row {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 8px;
-      background: #262730;
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 1px solid #363842;
+      gap: 6px;
     }
     .tool-group {
       display: flex;
       align-items: center;
-      gap: 6px;
-      border-right: 1px solid #41444e;
-      padding-right: 10px;
+      gap: 4px;
+      border-right: 1px solid #363842;
+      padding-right: 8px;
       margin-right: 4px;
     }
     .tool-group:last-child {
@@ -50,19 +56,27 @@
       padding-right: 0;
       margin-right: 0;
     }
+    .tool-group-label {
+      font-size: 11px;
+      color: #888;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-right: 4px;
+    }
     button.tool-btn {
-      background: #1e1f26;
+      background: #262730;
       color: #e0e0e0;
       border: 1px solid #41444e;
       border-radius: 6px;
-      padding: 7px 12px;
-      font-size: 13px;
+      padding: 6px 10px;
+      font-size: 12px;
       font-weight: 600;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       transition: all 0.15s ease;
+      user-select: none;
     }
     button.tool-btn:hover {
       background: #363842;
@@ -74,19 +88,7 @@
       background: #3b8ed0;
       border-color: #2b74b0;
       color: #ffffff;
-    }
-    button.btn-action {
-      background: #ff4b4b;
-      color: white;
-      border: none;
-      padding: 7px 14px;
-      border-radius: 6px;
-      font-weight: bold;
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-    button.btn-action:hover {
-      opacity: 0.9;
+      box-shadow: 0 0 8px rgba(59, 142, 208, 0.4);
     }
     button.btn-save {
       background: #2e7d32;
@@ -95,11 +97,13 @@
       padding: 8px 16px;
       border-radius: 6px;
       font-weight: bold;
+      font-size: 13px;
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 6px;
       transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(46, 125, 50, 0.4);
     }
     button.btn-save:hover {
       background: #1b5e20;
@@ -108,15 +112,15 @@
     .style-item {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       font-size: 12px;
       color: #ccc;
     }
     input[type="color"] {
       -webkit-appearance: none;
       border: none;
-      width: 26px;
-      height: 26px;
+      width: 24px;
+      height: 24px;
       border-radius: 4px;
       cursor: pointer;
       background: transparent;
@@ -129,8 +133,21 @@
       border-radius: 4px;
     }
     input[type="range"] {
-      width: 70px;
+      width: 65px;
       cursor: pointer;
+    }
+    select.tool-select {
+      background: #262730;
+      color: #fafafa;
+      border: 1px solid #41444e;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      outline: none;
+    }
+    select.tool-select:hover {
+      border-color: #3b8ed0;
     }
     /* Área de dibujo */
     .canvas-wrapper {
@@ -140,7 +157,7 @@
       overflow: hidden;
       margin: 0 auto;
       background: #18191f;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
     }
     .instructions-bar {
       font-size: 12px;
@@ -155,6 +172,64 @@
     .instructions-bar strong {
       color: #64b5f6;
     }
+
+    /* Modal de Firma */
+    .signature-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+    }
+    .signature-modal.active {
+      display: flex;
+    }
+    .signature-box {
+      background: #1e1f26;
+      border: 1px solid #41444e;
+      border-radius: 12px;
+      padding: 18px;
+      width: 480px;
+      max-width: 95vw;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+    }
+    .signature-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .signature-header h3 {
+      font-size: 16px;
+      color: #fff;
+    }
+    .signature-canvas-container {
+      background: #ffffff;
+      border: 2px dashed #3b8ed0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #signature-pad {
+      cursor: crosshair;
+      display: block;
+    }
+    .signature-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .signature-actions-left, .signature-actions-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
   </style>
 </head>
 <body>
@@ -162,83 +237,213 @@
 <div class="editor-container">
   <!-- Barra de Instrucciones y Tips -->
   <div class="instructions-bar">
-    <span>💡 <strong>Instrucciones:</strong> Haz clic en una figura para agregarla. <strong>Arrastra con el mouse para moverla</strong>, usa las <strong>esquinas para cambiar el tamaño</strong> o el manejador superior para <strong>rotarla</strong>.</span>
-    <span>Atajo: <kbd style="background:#333;padding:2px 5px;border-radius:3px;">Supr</kbd> para borrar</span>
+    <span>💡 <strong>Herramientas iLovePDF:</strong> Texto, Firmas, Sellos, Formas y Dibujo. <strong>Arrastra con el mouse</strong>, usa las esquinas para <strong>redimensionar</strong> o el punto superior para <strong>rotar</strong>.</span>
+    <span>Atajos: <kbd style="background:#333;padding:2px 5px;border-radius:3px;">Ctrl+Z</kbd> Deshacer | <kbd style="background:#333;padding:2px 5px;border-radius:3px;">Supr</kbd> Borrar</span>
   </div>
 
   <!-- Barra de Herramientas Principal -->
-  <div class="toolbar">
-    <!-- Grupo 1: Herramientas de Figuras -->
-    <div class="tool-group">
-      <button class="tool-btn active" id="btn-select" title="Seleccionar y mover figuras">
-        <span>🖱️</span> Mover
-      </button>
-      <button class="tool-btn" id="btn-arrow" title="Insertar Flecha direccionable">
-        <span>➡️</span> Flecha
-      </button>
-      <button class="tool-btn" id="btn-circle" title="Insertar Círculo o Elipse">
-        <span>⭕</span> Círculo
-      </button>
-      <button class="tool-btn" id="btn-rect" title="Insertar Rectángulo o Caja">
-        <span>⏹️</span> Rectángulo
-      </button>
-      <button class="tool-btn" id="btn-line" title="Insertar Línea recta">
-        <span>➖</span> Línea
-      </button>
-      <button class="tool-btn" id="btn-text" title="Insertar Texto editable">
-        <span>🔤</span> Texto
-      </button>
-      <button class="tool-btn" id="btn-redact" title="Insertar Censura permanente (Caja negra)">
-        <span>⬛</span> Censura
-      </button>
-      <button class="tool-btn" id="btn-draw" title="Dibujar a mano alzada con el mouse">
-        <span>🖍️</span> Lápiz
-      </button>
+  <div class="toolbar-container">
+    <!-- FILA 1: HERRAMIENTAS PRINCIPALES (FORMAS, DIBUJO, MEDIOS, FIRMAS) -->
+    <div class="toolbar-row">
+      <!-- Grupo Selección y Navegación -->
+      <div class="tool-group">
+        <button class="tool-btn active" id="btn-select" title="Seleccionar, mover y transformar objetos">
+          <span>🖱️</span> Mover
+        </button>
+      </div>
+
+      <!-- Grupo Figuras Vectoriales -->
+      <div class="tool-group">
+        <span class="tool-group-label">Formas</span>
+        <button class="tool-btn" id="btn-rect" title="Insertar Rectángulo o Cuadrado">
+          <span>⏹️</span> Rectángulo
+        </button>
+        <button class="tool-btn" id="btn-circle" title="Insertar Círculo o Elipse">
+          <span>⭕</span> Círculo
+        </button>
+        <button class="tool-btn" id="btn-triangle" title="Insertar Triángulo">
+          <span>📐</span> Triángulo
+        </button>
+        <button class="tool-btn" id="btn-star" title="Insertar Estrella / Insignia">
+          <span>⭐</span> Estrella
+        </button>
+        <button class="tool-btn" id="btn-line" title="Insertar Línea recta">
+          <span>➖</span> Línea
+        </button>
+        <button class="tool-btn" id="btn-arrow" title="Insertar Flecha orientable">
+          <span>➡️</span> Flecha
+        </button>
+      </div>
+
+      <!-- Grupo Dibujo Libre y Resaltador -->
+      <div class="tool-group">
+        <span class="tool-group-label">Anotar</span>
+        <button class="tool-btn" id="btn-draw" title="Dibujar a mano alzada con Lápiz">
+          <span>🖍️</span> Lápiz
+        </button>
+        <button class="tool-btn" id="btn-highlighter" title="Resaltador / Marcador fluorescente translúcido">
+          <span>🖊️</span> Resaltador
+        </button>
+        <button class="tool-btn" id="btn-text" title="Insertar Caja de Texto enriquecido">
+          <span>🔤</span> Texto
+        </button>
+        <button class="tool-btn" id="btn-redact" title="Insertar Censura permanente (Caja negra)">
+          <span>⬛</span> Censura
+        </button>
+      </div>
+
+      <!-- Grupo Firmas e Imágenes -->
+      <div class="tool-group">
+        <span class="tool-group-label">Medios</span>
+        <button class="tool-btn" id="btn-signature" title="Crear y estampar tu firma manuscrita">
+          <span>✍️</span> Firmar
+        </button>
+        <button class="tool-btn" id="btn-image" title="Insertar Imagen o Logo desde tu equipo">
+          <span>🖼️</span> Imagen
+        </button>
+        <input type="file" id="image-upload-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="display:none">
+      </div>
+
+      <!-- Botón de Guardado -->
+      <div class="tool-group" style="margin-left: auto;">
+        <button class="btn-save" id="btn-save" title="Guardar todos los cambios vectoriales en el PDF">
+          <span>💾</span> Guardar en PDF
+        </button>
+      </div>
     </div>
 
-    <!-- Grupo 2: Opciones de Estilo -->
-    <div class="tool-group">
-      <div class="style-item" title="Color de borde o trazo">
-        <span>Borde:</span>
-        <input type="color" id="stroke-color" value="#E53935">
-      </div>
-      <div class="style-item" title="Color de relleno">
-        <span>Relleno:</span>
-        <input type="color" id="fill-color" value="#90CAF9">
-        <label style="display:flex;align-items:center;gap:3px;cursor:pointer;">
-          <input type="checkbox" id="fill-transparent" checked>
-          <span>Vacío</span>
+    <!-- FILA 2: PROPIEDADES DE ESTILO, TIPOGRAFÍA, SELLOS Y ACCIONES -->
+    <div class="toolbar-row">
+      <!-- Estilos de Trazo y Relleno -->
+      <div class="tool-group">
+        <span class="tool-group-label">Estilo</span>
+        <div class="style-item" title="Color de borde o trazo">
+          <span>Borde:</span>
+          <input type="color" id="stroke-color" value="#E53935">
+        </div>
+        <div class="style-item" title="Color de relleno">
+          <span>Relleno:</span>
+          <input type="color" id="fill-color" value="#90CAF9">
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;margin-left:2px;">
+            <input type="checkbox" id="fill-transparent" checked>
+            <span>Vacío</span>
+          </label>
+        </div>
+        <div class="style-item" title="Grosor de trazo en píxeles">
+          <span>Grosor:</span>
+          <input type="range" id="stroke-width" min="1" max="25" value="3">
+          <span id="stroke-width-val" style="min-width:14px;">3</span>
+        </div>
+        <div class="style-item" title="Opacidad / Transparencia">
+          <span>Opacidad:</span>
+          <input type="range" id="opacity-slider" min="10" max="100" value="100">
+          <span id="opacity-val" style="min-width:28px;">100%</span>
+        </div>
+        <label style="display:flex;align-items:center;gap:3px;font-size:12px;color:#ccc;cursor:pointer;margin-left:4px;" title="Línea punteada o discontinua">
+          <input type="checkbox" id="dash-check">
+          <span>Punteada</span>
         </label>
       </div>
-      <div class="style-item" title="Grosor de línea en píxeles">
-        <span>Grosor:</span>
-        <input type="range" id="stroke-width" min="1" max="15" value="3">
-        <span id="stroke-width-val">3</span>
-      </div>
-      <div class="style-item" title="Opacidad / Transparencia">
-        <span>Opacidad:</span>
-        <input type="range" id="opacity-slider" min="10" max="100" value="100">
-        <span id="opacity-val">100%</span>
-      </div>
-    </div>
 
-    <!-- Grupo 3: Acciones -->
-    <div class="tool-group">
-      <button class="tool-btn" id="btn-delete" title="Eliminar figura seleccionada">
-        <span>🗑️</span> Borrar
-      </button>
-      <button class="tool-btn" id="btn-clear" title="Limpiar todas las figuras">
-        <span>🧹</span> Limpiar
-      </button>
-      <button class="btn-save" id="btn-save" title="Guardar cambios y descargar PDF">
-        <span>💾</span> Guardar en PDF
-      </button>
+      <!-- Opciones de Tipografía -->
+      <div class="tool-group">
+        <span class="tool-group-label">Texto</span>
+        <select class="tool-select" id="font-family-select" title="Familia tipográfica">
+          <option value="Helvetica, Arial, sans-serif">Arial / Helv</option>
+          <option value="'Times New Roman', Times, serif">Times New Roman</option>
+          <option value="'Courier New', Courier, monospace">Courier New</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="Impact, Charcoal, sans-serif">Impact</option>
+        </select>
+        <select class="tool-select" id="font-size-select" title="Tamaño de letra">
+          <option value="12">12 pt</option>
+          <option value="14">14 pt</option>
+          <option value="18" selected>18 pt</option>
+          <option value="24">24 pt</option>
+          <option value="32">32 pt</option>
+          <option value="48">48 pt</option>
+        </select>
+        <button class="tool-btn" id="btn-bold" title="Negrita (Bold)"><b>B</b></button>
+        <button class="tool-btn" id="btn-italic" title="Cursiva (Italic)"><i>I</i></button>
+        <button class="tool-btn" id="btn-underline" title="Subrayado (Underline)"><u>U</u></button>
+      </div>
+
+      <!-- Sellos y Símbolos de Oficina iLovePDF -->
+      <div class="tool-group">
+        <span class="tool-group-label">Sellos</span>
+        <select class="tool-select" id="stamp-select" title="Insertar Sello de oficina">
+          <option value="" disabled selected>🏷️ Sellos...</option>
+          <option value="APROBADO">✓ APROBADO</option>
+          <option value="CONFIDENCIAL">🔒 CONFIDENCIAL</option>
+          <option value="PAGADO">💰 PAGADO</option>
+          <option value="RECHAZADO">✗ RECHAZADO</option>
+          <option value="BORRADOR">📝 BORRADOR</option>
+          <option value="COPIA OFICIAL">📑 COPIA OFICIAL</option>
+        </select>
+        <select class="tool-select" id="badge-select" title="Insertar Símbolo rápido">
+          <option value="" disabled selected>🔘 Símbolo...</option>
+          <option value="CHECK">✔️ Visto Bueno</option>
+          <option value="CROSS">❌ Cruz Roja</option>
+          <option value="ALERT">⚠️ Advertencia</option>
+          <option value="STAR">⭐ Estrella</option>
+          <option value="DATE">📅 Fecha de Hoy</option>
+        </select>
+      </div>
+
+      <!-- Acciones de Objeto (Undo, Redo, Duplicar, Capas, Borrar) -->
+      <div class="tool-group" style="margin-left: auto;">
+        <button class="tool-btn" id="btn-undo" title="Deshacer (Ctrl+Z)">
+          <span>↩️</span>
+        </button>
+        <button class="tool-btn" id="btn-redo" title="Rehacer (Ctrl+Y)">
+          <span>↪️</span>
+        </button>
+        <button class="tool-btn" id="btn-duplicate" title="Duplicar objeto seleccionado">
+          <span>📋</span>
+        </button>
+        <button class="tool-btn" id="btn-bring-front" title="Traer al frente">
+          <span>🔝</span>
+        </button>
+        <button class="tool-btn" id="btn-send-back" title="Enviar al fondo">
+          <span>🔽</span>
+        </button>
+        <button class="tool-btn" id="btn-delete" title="Eliminar seleccionado">
+          <span>🗑️</span>
+        </button>
+        <button class="tool-btn" id="btn-clear" title="Limpiar todas las figuras">
+          <span>🧹</span>
+        </button>
+      </div>
     </div>
   </div>
 
-  <!-- Contenedor del Canvas -->
+  <!-- Contenedor del Canvas Principal -->
   <div class="canvas-wrapper" id="canvas-container">
     <canvas id="pdf-canvas"></canvas>
+  </div>
+</div>
+
+<!-- MODAL DE FIRMA DIGITAL -->
+<div class="signature-modal" id="sig-modal">
+  <div class="signature-box">
+    <div class="signature-header">
+      <h3>✍️ Dibujar Firma Manuscrita</h3>
+      <button class="tool-btn" id="sig-close-btn" style="padding: 2px 8px;">✕</button>
+    </div>
+    <div class="signature-canvas-container">
+      <canvas id="signature-pad" width="440" height="180"></canvas>
+    </div>
+    <div class="signature-actions">
+      <div class="signature-actions-left">
+        <span style="font-size:12px;color:#aaa;">Tinta:</span>
+        <button class="tool-btn active" id="sig-color-blue" style="color:#1976D2;">● Azul</button>
+        <button class="tool-btn" id="sig-color-black" style="color:#212121;">● Negro</button>
+        <button class="tool-btn" id="sig-clear-btn">🧹 Borrar</button>
+      </div>
+      <div class="signature-actions-right">
+        <button class="btn-save" id="sig-insert-btn" style="padding:6px 14px;">✅ Insertar en PDF</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -262,7 +467,6 @@
     }, "*");
   }
 
-  // Notificar a Streamlit que el componente está listo
   window.parent.postMessage({
     isStreamlitMessage: true,
     type: "streamlit:componentReady",
@@ -280,8 +484,14 @@
   let canvasScale = 1.0;
   let displayW = 595;
   let displayH = 842;
+  let currentMode = "select";
 
-  // Elementos UI
+  // Pila de Historial (Undo / Redo)
+  let historyStack = [];
+  let historyIndex = -1;
+  let isHistoryProcessing = false;
+
+  // Elementos UI de Estilo
   const strokeColorInput = document.getElementById("stroke-color");
   const fillColorInput = document.getElementById("fill-color");
   const fillTransparentCheck = document.getElementById("fill-transparent");
@@ -289,6 +499,14 @@
   const strokeWidthVal = document.getElementById("stroke-width-val");
   const opacitySlider = document.getElementById("opacity-slider");
   const opacityVal = document.getElementById("opacity-val");
+  const dashCheck = document.getElementById("dash-check");
+
+  // Elementos UI de Texto
+  const fontFamilySelect = document.getElementById("font-family-select");
+  const fontSizeSelect = document.getElementById("font-size-select");
+  const btnBold = document.getElementById("btn-bold");
+  const btnItalic = document.getElementById("btn-italic");
+  const btnUnderline = document.getElementById("btn-underline");
 
   strokeWidthSlider.addEventListener("input", (e) => {
     strokeWidthVal.textContent = e.target.value;
@@ -301,76 +519,147 @@
   strokeColorInput.addEventListener("input", updateActiveObjectStyle);
   fillColorInput.addEventListener("input", updateActiveObjectStyle);
   fillTransparentCheck.addEventListener("change", updateActiveObjectStyle);
+  dashCheck.addEventListener("change", updateActiveObjectStyle);
 
-  function getStrokeColor() {
-    return strokeColorInput.value;
-  }
+  fontFamilySelect.addEventListener("change", updateActiveObjectStyle);
+  fontSizeSelect.addEventListener("change", updateActiveObjectStyle);
+  btnBold.addEventListener("click", () => {
+    btnBold.classList.toggle("active");
+    updateActiveObjectStyle();
+  });
+  btnItalic.addEventListener("click", () => {
+    btnItalic.classList.toggle("active");
+    updateActiveObjectStyle();
+  });
+  btnUnderline.addEventListener("click", () => {
+    btnUnderline.classList.toggle("active");
+    updateActiveObjectStyle();
+  });
+
+  function getStrokeColor() { return strokeColorInput.value; }
   function getFillColor() {
     if (fillTransparentCheck.checked) return "transparent";
-    const hex = fillColorInput.value;
-    return hex;
+    return fillColorInput.value;
   }
-  function getStrokeWidth() {
-    return parseInt(strokeWidthSlider.value, 10);
-  }
-  function getOpacity() {
-    return parseInt(opacitySlider.value, 10) / 100.0;
-  }
+  function getStrokeWidth() { return parseInt(strokeWidthSlider.value, 10); }
+  function getOpacity() { return parseInt(opacitySlider.value, 10) / 100.0; }
+  function isDashed() { return dashCheck.checked; }
 
   function updateActiveObjectStyle() {
     if (!canvas) return;
     const active = canvas.getActiveObject();
     if (!active) return;
 
+    const color = getStrokeColor();
+    const fill = getFillColor();
+    const sw = getStrokeWidth();
+    const op = getOpacity();
+    const dashed = isDashed() ? [8, 5] : null;
+
     if (active.type === "arrow") {
-      // Flecha (grupo o línea + cabeza)
-      const color = getStrokeColor();
-      const op = getOpacity();
-      const sw = getStrokeWidth();
       active.set({ opacity: op });
       active.getObjects().forEach(obj => {
         if (obj.type === "line") {
-          obj.set({ stroke: color, strokeWidth: sw });
+          obj.set({ stroke: color, strokeWidth: sw, strokeDashArray: dashed });
         } else if (obj.type === "triangle") {
           obj.set({ fill: color, stroke: color });
         }
       });
-    } else if (active.type === "i-text") {
+    } else if (active.type === "i-text" || active.type === "text") {
       active.set({
-        fill: getStrokeColor(),
-        opacity: getOpacity()
+        fill: color,
+        opacity: op,
+        fontFamily: fontFamilySelect.value,
+        fontSize: parseInt(fontSizeSelect.value, 10),
+        fontWeight: btnBold.classList.contains("active") ? "bold" : "normal",
+        fontStyle: btnItalic.classList.contains("active") ? "italic" : "normal",
+        underline: btnUnderline.classList.contains("active")
       });
+    } else if (active.type === "group") {
+      active.set({ opacity: op });
     } else {
       active.set({
-        stroke: getStrokeColor(),
-        fill: getFillColor(),
-        strokeWidth: getStrokeWidth(),
-        opacity: getOpacity()
+        stroke: color,
+        fill: fill,
+        strokeWidth: sw,
+        opacity: op,
+        strokeDashArray: dashed
       });
     }
     canvas.renderAll();
+    saveHistoryState();
   }
 
   // =========================================================================
-  // CREACIÓN DE FIGURAS DIRECTAMENTE EN EL CANVAS
+  // GESTIÓN DEL HISTORIAL (UNDO / REDO)
+  // =========================================================================
+  function saveHistoryState() {
+    if (isHistoryProcessing || !canvas) return;
+    // Serializar solo objetos propios (excluyendo fondo)
+    const jsonStr = JSON.stringify(canvas.toDatalessJSON(['selectable', 'evented']));
+    if (historyIndex < historyStack.length - 1) {
+      historyStack = historyStack.slice(0, historyIndex + 1);
+    }
+    historyStack.push(jsonStr);
+    if (historyStack.length > 30) {
+      historyStack.shift();
+    } else {
+      historyIndex++;
+    }
+  }
+
+  function undo() {
+    if (historyIndex > 0) {
+      isHistoryProcessing = true;
+      historyIndex--;
+      restoreHistoryState(historyStack[historyIndex]);
+    }
+  }
+
+  function redo() {
+    if (historyIndex < historyStack.length - 1) {
+      isHistoryProcessing = true;
+      historyIndex++;
+      restoreHistoryState(historyStack[historyIndex]);
+    }
+  }
+
+  function restoreHistoryState(jsonStr) {
+    const bg = canvas.backgroundImage;
+    canvas.loadFromJSON(jsonStr, () => {
+      canvas.backgroundImage = bg;
+      canvas.renderAll();
+      isHistoryProcessing = false;
+    });
+  }
+
+  document.getElementById("btn-undo").onclick = undo;
+  document.getElementById("btn-redo").onclick = redo;
+
+  // =========================================================================
+  // CREACIÓN DE FORMAS, TEXTOS Y HERRAMIENTAS
   // =========================================================================
 
-  // 1. FLECHA VECTORIAL INTERACTIVA
-  function addArrow() {
+  // 1. Mover / Seleccionar
+  document.getElementById("btn-select").onclick = () => setMode("select");
+
+  // 2. Flecha
+  document.getElementById("btn-arrow").onclick = () => {
+    setMode("select");
     const sw = getStrokeWidth();
     const color = getStrokeColor();
     const op = getOpacity();
+    const dashed = isDashed() ? [8, 5] : null;
 
-    // Crear cuerpo de línea
     const line = new fabric.Line([0, 0, 160, 0], {
       stroke: color,
       strokeWidth: sw,
+      strokeDashArray: dashed,
       originX: 'center',
       originY: 'center',
       selectable: false
     });
 
-    // Crear punta triangular
     const headSize = Math.max(14, sw * 4);
     const head = new fabric.Triangle({
       left: 80,
@@ -398,29 +687,12 @@
     canvas.add(arrowGroup);
     canvas.setActiveObject(arrowGroup);
     canvas.renderAll();
-  }
+    saveHistoryState();
+  };
 
-  // 2. CÍRCULO / ELIPSE
-  function addCircle() {
-    const circle = new fabric.Circle({
-      left: 120,
-      top: 120,
-      radius: 50,
-      stroke: getStrokeColor(),
-      fill: getFillColor(),
-      strokeWidth: getStrokeWidth(),
-      opacity: getOpacity(),
-      cornerColor: '#3b8ed0',
-      cornerSize: 10,
-      transparentCorners: false
-    });
-    canvas.add(circle);
-    canvas.setActiveObject(circle);
-    canvas.renderAll();
-  }
-
-  // 3. RECTÁNGULO
-  function addRect() {
+  // 3. Rectángulo
+  document.getElementById("btn-rect").onclick = () => {
+    setMode("select");
     const rect = new fabric.Rect({
       left: 100,
       top: 100,
@@ -430,6 +702,7 @@
       fill: getFillColor(),
       strokeWidth: getStrokeWidth(),
       opacity: getOpacity(),
+      strokeDashArray: isDashed() ? [8, 5] : null,
       cornerColor: '#3b8ed0',
       cornerSize: 10,
       transparentCorners: false
@@ -437,14 +710,92 @@
     canvas.add(rect);
     canvas.setActiveObject(rect);
     canvas.renderAll();
-  }
+    saveHistoryState();
+  };
 
-  // 4. LÍNEA RECTA
-  function addLine() {
+  // 4. Círculo
+  document.getElementById("btn-circle").onclick = () => {
+    setMode("select");
+    const circle = new fabric.Circle({
+      left: 120,
+      top: 120,
+      radius: 50,
+      stroke: getStrokeColor(),
+      fill: getFillColor(),
+      strokeWidth: getStrokeWidth(),
+      opacity: getOpacity(),
+      strokeDashArray: isDashed() ? [8, 5] : null,
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+    canvas.add(circle);
+    canvas.setActiveObject(circle);
+    canvas.renderAll();
+    saveHistoryState();
+  };
+
+  // 5. Triángulo
+  document.getElementById("btn-triangle").onclick = () => {
+    setMode("select");
+    const tri = new fabric.Triangle({
+      left: 120,
+      top: 120,
+      width: 110,
+      height: 90,
+      stroke: getStrokeColor(),
+      fill: getFillColor(),
+      strokeWidth: getStrokeWidth(),
+      opacity: getOpacity(),
+      strokeDashArray: isDashed() ? [8, 5] : null,
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+    canvas.add(tri);
+    canvas.setActiveObject(tri);
+    canvas.renderAll();
+    saveHistoryState();
+  };
+
+  // 6. Estrella / Insignia
+  document.getElementById("btn-star").onclick = () => {
+    setMode("select");
+    const points = [];
+    const numPoints = 5;
+    const outerR = 50;
+    const innerR = 25;
+    const step = Math.PI / numPoints;
+    for (let i = 0; i < 2 * numPoints; i++) {
+      const r = (i % 2 === 0) ? outerR : innerR;
+      const angle = i * step - Math.PI / 2;
+      points.push({ x: r * Math.cos(angle) + outerR, y: r * Math.sin(angle) + outerR });
+    }
+    const star = new fabric.Polygon(points, {
+      left: 120,
+      top: 120,
+      stroke: getStrokeColor(),
+      fill: getFillColor(),
+      strokeWidth: getStrokeWidth(),
+      opacity: getOpacity(),
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+    canvas.add(star);
+    canvas.setActiveObject(star);
+    canvas.renderAll();
+    saveHistoryState();
+  };
+
+  // 7. Línea
+  document.getElementById("btn-line").onclick = () => {
+    setMode("select");
     const line = new fabric.Line([100, 100, 300, 100], {
       stroke: getStrokeColor(),
       strokeWidth: getStrokeWidth(),
       opacity: getOpacity(),
+      strokeDashArray: isDashed() ? [8, 5] : null,
       cornerColor: '#3b8ed0',
       cornerSize: 10,
       transparentCorners: false
@@ -452,15 +803,26 @@
     canvas.add(line);
     canvas.setActiveObject(line);
     canvas.renderAll();
-  }
+    saveHistoryState();
+  };
 
-  // 5. TEXTO EDITABLE
-  function addText() {
-    const text = new fabric.IText("Haz doble clic para editar", {
+  // 8. Lápiz
+  document.getElementById("btn-draw").onclick = () => setMode("draw");
+
+  // 9. Resaltador Fluorescente
+  document.getElementById("btn-highlighter").onclick = () => setMode("highlighter");
+
+  // 10. Texto Enriquecido
+  document.getElementById("btn-text").onclick = () => {
+    setMode("select");
+    const text = new fabric.IText("Haz doble clic para escribir", {
       left: 120,
       top: 120,
-      fontFamily: 'Helvetica, Arial, sans-serif',
-      fontSize: 18,
+      fontFamily: fontFamilySelect.value,
+      fontSize: parseInt(fontSizeSelect.value, 10),
+      fontWeight: btnBold.classList.contains("active") ? "bold" : "normal",
+      fontStyle: btnItalic.classList.contains("active") ? "italic" : "normal",
+      underline: btnUnderline.classList.contains("active"),
       fill: getStrokeColor(),
       opacity: getOpacity(),
       cornerColor: '#3b8ed0',
@@ -470,10 +832,12 @@
     canvas.add(text);
     canvas.setActiveObject(text);
     canvas.renderAll();
-  }
+    saveHistoryState();
+  };
 
-  // 6. CENSURA PERMANENTE (REDACTION)
-  function addRedaction() {
+  // 11. Censura Permanente
+  document.getElementById("btn-redact").onclick = () => {
+    setMode("select");
     const redactBox = new fabric.Rect({
       left: 100,
       top: 100,
@@ -490,39 +854,317 @@
     canvas.add(redactBox);
     canvas.setActiveObject(redactBox);
     canvas.renderAll();
+    saveHistoryState();
+  };
+
+  // 12. Insertar Imagen
+  const imageUploadInput = document.getElementById("image-upload-input");
+  document.getElementById("btn-image").onclick = () => {
+    imageUploadInput.click();
+  };
+  imageUploadInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (f) => {
+      fabric.Image.fromURL(f.target.result, (img) => {
+        const maxW = 220;
+        const scale = Math.min(maxW / img.width, maxW / img.height, 1.0);
+        img.set({
+          left: 120,
+          top: 120,
+          scaleX: scale,
+          scaleY: scale,
+          cornerColor: '#3b8ed0',
+          cornerSize: 10,
+          transparentCorners: false
+        });
+        canvas.add(img);
+        canvas.setActiveObject(img);
+        canvas.renderAll();
+        saveHistoryState();
+      });
+    };
+    reader.readAsDataURL(file);
+    imageUploadInput.value = "";
+  };
+
+  // 13. Sellos de Oficina Profesionales
+  const stampSelect = document.getElementById("stamp-select");
+  stampSelect.onchange = () => {
+    const val = stampSelect.value;
+    if (!val) return;
+    createStamp(val);
+    stampSelect.value = "";
+  };
+
+  function createStamp(text) {
+    setMode("select");
+    let color = "#2e7d32"; // verde
+    if (text === "CONFIDENCIAL" || text === "RECHAZADO") color = "#c62828";
+    if (text === "PAGADO") color = "#1565c0";
+    if (text === "BORRADOR") color = "#616161";
+    if (text === "COPIA OFICIAL") color = "#ef6c00";
+
+    const label = new fabric.Text(text, {
+      fontSize: 22,
+      fontFamily: 'Impact, sans-serif',
+      fill: color,
+      originX: 'center',
+      originY: 'center',
+      letterSpacing: 2
+    });
+
+    const box = new fabric.Rect({
+      width: label.width + 30,
+      height: label.height + 16,
+      stroke: color,
+      strokeWidth: 3,
+      fill: 'rgba(255,255,255,0.85)',
+      rx: 6,
+      ry: 6,
+      originX: 'center',
+      originY: 'center'
+    });
+
+    const group = new fabric.Group([box, label], {
+      left: 140,
+      top: 140,
+      angle: -10,
+      opacity: 0.9,
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+
+    canvas.add(group);
+    canvas.setActiveObject(group);
+    canvas.renderAll();
+    saveHistoryState();
   }
 
-  // Conectar botones de herramientas
-  document.getElementById("btn-arrow").onclick = () => { setMode("select"); addArrow(); };
-  document.getElementById("btn-circle").onclick = () => { setMode("select"); addCircle(); };
-  document.getElementById("btn-rect").onclick = () => { setMode("select"); addRect(); };
-  document.getElementById("btn-line").onclick = () => { setMode("select"); addLine(); };
-  document.getElementById("btn-text").onclick = () => { setMode("select"); addText(); };
-  document.getElementById("btn-redact").onclick = () => { setMode("select"); addRedaction(); };
-
-  document.getElementById("btn-draw").onclick = () => {
-    setMode("draw");
+  // 14. Símbolos Rápidos
+  const badgeSelect = document.getElementById("badge-select");
+  badgeSelect.onchange = () => {
+    const val = badgeSelect.value;
+    if (!val) return;
+    insertBadge(val);
+    badgeSelect.value = "";
   };
-  document.getElementById("btn-select").onclick = () => {
+
+  function insertBadge(type) {
     setMode("select");
-  };
+    let content = "✔️";
+    let color = "#2e7d32";
+    let size = 32;
 
+    if (type === "CROSS") { content = "❌"; color = "#c62828"; }
+    else if (type === "ALERT") { content = "⚠️"; color = "#f57f17"; }
+    else if (type === "STAR") { content = "⭐"; color = "#fbc02d"; }
+    else if (type === "DATE") {
+      const today = new Date();
+      content = today.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
+      color = "#1565c0";
+      size = 16;
+    }
+
+    const textObj = new fabric.Text(content, {
+      left: 120,
+      top: 120,
+      fontSize: size,
+      fill: color,
+      fontFamily: 'sans-serif',
+      cornerColor: '#3b8ed0',
+      cornerSize: 10,
+      transparentCorners: false
+    });
+    canvas.add(textObj);
+    canvas.setActiveObject(textObj);
+    canvas.renderAll();
+    saveHistoryState();
+  }
+
+  // =========================================================================
+  // GESTIÓN DE MODOS (SELECT, DRAW, HIGHLIGHTER)
+  // =========================================================================
   function setMode(mode) {
     if (!canvas) return;
+    currentMode = mode;
+    const btnSelect = document.getElementById("btn-select");
+    const btnDraw = document.getElementById("btn-draw");
+    const btnHigh = document.getElementById("btn-highlighter");
+
+    btnSelect.classList.remove("active");
+    btnDraw.classList.remove("active");
+    btnHigh.classList.remove("active");
+
     if (mode === "draw") {
       canvas.isDrawingMode = true;
       canvas.freeDrawingBrush.color = getStrokeColor();
       canvas.freeDrawingBrush.width = getStrokeWidth();
-      document.getElementById("btn-draw").classList.add("active");
-      document.getElementById("btn-select").classList.remove("active");
+      btnDraw.classList.add("active");
+    } else if (mode === "highlighter") {
+      canvas.isDrawingMode = true;
+      // Resaltador translúcido amarillo o color seleccionado con 40% opacidad
+      const hex = getStrokeColor();
+      canvas.freeDrawingBrush.color = hexToRgba(hex, 0.4);
+      canvas.freeDrawingBrush.width = Math.max(20, getStrokeWidth() * 4);
+      btnHigh.classList.add("active");
     } else {
       canvas.isDrawingMode = false;
-      document.getElementById("btn-draw").classList.remove("active");
-      document.getElementById("btn-select").classList.add("active");
+      btnSelect.classList.add("active");
     }
   }
 
-  // Eliminar seleccionado
+  function hexToRgba(hex, alpha) {
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+    const r = parseInt(c.substring(0, 2), 16) || 255;
+    const g = parseInt(c.substring(2, 4), 16) || 235;
+    const b = parseInt(c.substring(4, 6), 16) || 59;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  // =========================================================================
+  // MODAL DE FIRMA DIGITAL (CANVAS DEDICADO)
+  // =========================================================================
+  const sigModal = document.getElementById("sig-modal");
+  const sigPad = document.getElementById("signature-pad");
+  const sigCtx = sigPad.getContext("2d");
+  let sigDrawing = false;
+  let sigColor = "#1565c0"; // azul por defecto
+
+  document.getElementById("btn-signature").onclick = () => {
+    sigModal.classList.add("active");
+    clearSigPad();
+  };
+  document.getElementById("sig-close-btn").onclick = () => sigModal.classList.remove("active");
+  document.getElementById("sig-clear-btn").onclick = clearSigPad;
+
+  document.getElementById("sig-color-blue").onclick = (e) => {
+    sigColor = "#1565c0";
+    e.target.classList.add("active");
+    document.getElementById("sig-color-black").classList.remove("active");
+  };
+  document.getElementById("sig-color-black").onclick = (e) => {
+    sigColor = "#111111";
+    e.target.classList.add("active");
+    document.getElementById("sig-color-blue").classList.remove("active");
+  };
+
+  function clearSigPad() {
+    sigCtx.clearRect(0, 0, sigPad.width, sigPad.height);
+  }
+
+  function getSigPos(e) {
+    const rect = sigPad.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  sigPad.addEventListener("mousedown", (e) => {
+    sigDrawing = true;
+    const pos = getSigPos(e);
+    sigCtx.beginPath();
+    sigCtx.moveTo(pos.x, pos.y);
+  });
+  sigPad.addEventListener("mousemove", (e) => {
+    if (!sigDrawing) return;
+    const pos = getSigPos(e);
+    sigCtx.lineTo(pos.x, pos.y);
+    sigCtx.strokeStyle = sigColor;
+    sigCtx.lineWidth = 2.5;
+    sigCtx.lineCap = "round";
+    sigCtx.lineJoin = "round";
+    sigCtx.stroke();
+  });
+  window.addEventListener("mouseup", () => sigDrawing = false);
+
+  // Soporte Touch en Móviles/Tablets
+  sigPad.addEventListener("touchstart", (e) => {
+    sigDrawing = true;
+    const pos = getSigPos(e);
+    sigCtx.beginPath();
+    sigCtx.moveTo(pos.x, pos.y);
+    e.preventDefault();
+  }, { passive: false });
+  sigPad.addEventListener("touchmove", (e) => {
+    if (!sigDrawing) return;
+    const pos = getSigPos(e);
+    sigCtx.lineTo(pos.x, pos.y);
+    sigCtx.strokeStyle = sigColor;
+    sigCtx.lineWidth = 2.5;
+    sigCtx.lineCap = "round";
+    sigCtx.lineJoin = "round";
+    sigCtx.stroke();
+    e.preventDefault();
+  }, { passive: false });
+  sigPad.addEventListener("touchend", () => sigDrawing = false);
+
+  document.getElementById("sig-insert-btn").onclick = () => {
+    const dataUrl = sigPad.toDataURL("image/png");
+    fabric.Image.fromURL(dataUrl, (img) => {
+      img.set({
+        left: 120,
+        top: 120,
+        scaleX: 0.6,
+        scaleY: 0.6,
+        cornerColor: '#3b8ed0',
+        cornerSize: 10,
+        transparentCorners: false
+      });
+      canvas.add(img);
+      canvas.setActiveObject(img);
+      canvas.renderAll();
+      saveHistoryState();
+      sigModal.classList.remove("active");
+    });
+  };
+
+  // =========================================================================
+  // ACCIONES DE EDICIÓN (DUPLICAR, CAPAS, BORRAR, LIMPIAR)
+  // =========================================================================
+  document.getElementById("btn-duplicate").onclick = () => {
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (!active) return;
+    active.clone((cloned) => {
+      cloned.set({
+        left: active.left + 25,
+        top: active.top + 25,
+        evented: true
+      });
+      canvas.add(cloned);
+      canvas.setActiveObject(cloned);
+      canvas.renderAll();
+      saveHistoryState();
+    });
+  };
+
+  document.getElementById("btn-bring-front").onclick = () => {
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active) {
+      canvas.bringToFront(active);
+      canvas.renderAll();
+      saveHistoryState();
+    }
+  };
+
+  document.getElementById("btn-send-back").onclick = () => {
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active) {
+      canvas.sendToBack(active);
+      if (canvas.backgroundImage) {
+        canvas.sendToBack(canvas.backgroundImage);
+      }
+      canvas.renderAll();
+      saveHistoryState();
+    }
+  };
+
   document.getElementById("btn-delete").onclick = deleteSelected;
   function deleteSelected() {
     if (!canvas) return;
@@ -531,33 +1173,38 @@
       canvas.remove(active);
       canvas.discardActiveObject();
       canvas.renderAll();
+      saveHistoryState();
     }
   }
 
-  // Limpiar todo
   document.getElementById("btn-clear").onclick = () => {
     if (!canvas) return;
-    if (confirm("¿Deseas borrar todas las figuras añadidas a esta página?")) {
+    if (confirm("¿Deseas borrar todas las figuras y anotaciones de esta página?")) {
       const bg = canvas.backgroundImage;
       canvas.clear();
       canvas.backgroundImage = bg;
       canvas.renderAll();
+      saveHistoryState();
     }
   };
 
-  // Teclado: Suprimir o Backspace para borrar
   window.addEventListener("keydown", (e) => {
     if (e.key === "Delete" || e.key === "Backspace") {
       const active = canvas ? canvas.getActiveObject() : null;
-      // Solo si no estamos escribiendo dentro de un texto
       if (active && (!active.isEditing)) {
         deleteSelected();
       }
+    } else if (e.ctrlKey && e.key === "z") {
+      undo();
+      e.preventDefault();
+    } else if (e.ctrlKey && e.key === "y") {
+      redo();
+      e.preventDefault();
     }
   });
 
   // =========================================================================
-  // GUARDAR Y DESCARGAR PDF CON FIGURAS
+  // GUARDAR Y EXPORTAR OVERLAY PIXEL-PERFECT A STREAMLIT
   // =========================================================================
   document.getElementById("btn-save").onclick = async () => {
     if (!canvas) return;
@@ -572,15 +1219,15 @@
     btn.disabled = true;
 
     try {
-      // 1. Deseleccionar cualquier figura activa para que no se exporten los manejadores azules
+      // 1. Deseleccionar cualquier figura activa
       canvas.discardActiveObject();
 
-      // 2. Ocultar fondo para exportar ÚNICAMENTE las figuras en alta resolución transparente
+      // 2. Ocultar fondo temporalmente para exportar únicamente las figuras
       const bg = canvas.backgroundImage;
       canvas.backgroundImage = null;
       canvas.renderAll();
 
-      // Exportar overlay transparente en dimensiones nativas exactas del PDF sin distorsión de Retina/DPI
+      // Exportar en dimensiones exactas del PDF con 0% de distorsión
       const mult = pdfPageWidth / canvas.getWidth();
       const overlayDataUrl = canvas.toDataURL({
         format: "png",
@@ -596,7 +1243,7 @@
       canvas.backgroundImage = bg;
       canvas.renderAll();
 
-      // Enviar a Streamlit / PyMuPDF para procesamiento vectorial exacto con derotation_matrix
+      // Enviar a Streamlit / PyMuPDF
       sendToStreamlit({
         status: "success",
         overlay_png: overlayDataUrl,
@@ -630,7 +1277,7 @@
     pdfPageWidth = parseFloat(args.page_width) || 595;
     pdfPageHeight = parseFloat(args.page_height) || 842;
 
-    const maxDisplayWidth = Math.min(window.innerWidth - 40, 800);
+    const maxDisplayWidth = Math.min(window.innerWidth - 40, 850);
     canvasScale = maxDisplayWidth / pdfPageWidth;
     displayW = Math.round(pdfPageWidth * canvasScale);
     displayH = Math.round(pdfPageHeight * canvasScale);
@@ -644,7 +1291,6 @@
         enableRetinaScaling: false
       });
 
-      // Modificar estilo de los controles de selección
       fabric.Object.prototype.set({
         transparentCorners: false,
         cornerColor: '#3b8ed0',
@@ -653,9 +1299,15 @@
         cornerSize: 10,
         padding: 5
       });
+
+      canvas.on('object:added', () => { if (!isHistoryProcessing) saveHistoryState(); });
+      canvas.on('object:modified', () => { if (!isHistoryProcessing) saveHistoryState(); });
+      canvas.on('object:removed', () => { if (!isHistoryProcessing) saveHistoryState(); });
     } else {
       if (currentLoadedPage !== pageIndex) {
         canvas.clear();
+        historyStack = [];
+        historyIndex = -1;
       }
       canvas.setWidth(displayW);
       canvas.setHeight(displayH);
@@ -674,10 +1326,10 @@
           evented: false
         });
         canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
-        setFrameHeight(displayH + 140);
+        setFrameHeight(displayH + 220);
       });
     } else {
-      setFrameHeight(displayH + 140);
+      setFrameHeight(displayH + 220);
     }
   });
 </script>

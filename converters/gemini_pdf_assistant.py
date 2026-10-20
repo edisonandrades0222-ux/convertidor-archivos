@@ -165,3 +165,59 @@ def gemini_translate_pdf_text(
         contents=[doc_part, prompt]
     )
     return response.text or ""
+
+def gemini_assist_page(
+    pdf_bytes: bytes,
+    page_number: int,
+    action: str = "ocr",
+    custom_prompt: Optional[str] = None,
+    target_language: str = "Español"
+) -> str:
+    """
+    Ejecuta asistencia de IA con Gemini 3.8 Flash específicamente sobre una página individual del PDF.
+    Acciones soportadas: 'ocr', 'summary', 'translate', 'draft_note', 'custom'.
+    """
+    client = get_gemini_client()
+    if not client:
+        raise RuntimeError("No se detectó la variable de entorno GEMINI_API_KEY.")
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    if page_number < 0 or page_number >= len(doc):
+        page_number = 0
+    single_doc = fitz.open()
+    single_doc.insert_pdf(doc, from_page=page_number, to_page=page_number)
+    single_bytes = single_doc.tobytes()
+    single_doc.close()
+    doc.close()
+
+    doc_part = types.Part.from_bytes(data=single_bytes, mime_type="application/pdf")
+
+    if action == "ocr":
+        prompt = (
+            "Extrae con máxima fidelidad todo el texto visible, tablas, listas, firmas o anotaciones "
+            "de esta página en formato Markdown. Si hay tablas o formularios, estructúralos limpiamente."
+        )
+    elif action == "summary":
+        prompt = (
+            "Elabora un resumen conciso y profesional de esta página específica del documento. "
+            "Destaca los puntos centrales, cláusulas, datos numéricos o fechas relevantes en viñetas."
+        )
+    elif action == "translate":
+        prompt = (
+            f"Traduce fielmente todo el contenido de esta página al idioma {target_language}, "
+            "manteniendo el formato, títulos y listas en Markdown."
+        )
+    elif action == "draft_note":
+        prompt = (
+            f"Actúa como un redactor profesional de documentos. Con base en esta página, "
+            f"genera el siguiente texto o nota técnica solicitada por el usuario:\n{custom_prompt or 'Genera una nota de revisión aprobada'}\n"
+            "Devuelve solo el texto de la nota listo para ser insertado en el documento."
+        )
+    else:
+        prompt = custom_prompt or "Analiza y describe detalladamente el contenido de esta página."
+
+    response = client.models.generate_content(
+        model="gemini-3.8-flash",
+        contents=[doc_part, prompt]
+    )
+    return response.text or ""

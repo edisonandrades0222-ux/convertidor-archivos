@@ -37,11 +37,13 @@ from converters.pdf_editor import (
 from converters.pdf_advanced_tools import (
     merge_pdfs, split_pdf, remove_pages, extract_pages, rotate_pages,
     compress_pdf, protect_pdf, unlock_pdf, watermark_pdf, add_page_numbers,
-    pdf_to_pptx, pdf_to_excel, crop_pdf
+    pdf_to_pptx, pdf_to_excel, crop_pdf,
+    rotate_page_bytes, insert_blank_page_bytes, duplicate_page_bytes,
+    delete_page_bytes, extract_single_page_bytes
 )
 from converters.gemini_pdf_assistant import (
     get_gemini_client, gemini_ocr_pdf, gemini_summarize_pdf,
-    gemini_chat_with_pdf, gemini_translate_pdf_text
+    gemini_chat_with_pdf, gemini_translate_pdf_text, gemini_assist_page
 )
 
 # Garantizar fuentes disponibles de forma eficiente
@@ -200,6 +202,50 @@ with tabs[0]:
 
         st.caption(f"📄 Editando **Página {current_page + 1} de {total_p}** | Tamaño: **{page_w:.0f} x {page_h:.0f} pt** (Rotación: {rot_deg}°)")
 
+        # Barra de Acciones Rápidas sobre la Página (Suite iLovePDF)
+        act_col1, act_col2, act_col3, act_col4, act_col5 = st.columns(5)
+        with act_col1:
+            if st.button("🔄 Girar (+90°)", help="Gira la página activa 90 grados a la derecha", use_container_width=True):
+                new_bytes = rotate_page_bytes(pdf_bytes, current_page, 90)
+                st.session_state["current_editing_pdf"] = new_bytes
+                st.session_state["saved_interactive_pdf"] = new_bytes
+                st.toast(f"Página {current_page + 1} rotada 90°", icon="🔄")
+                st.rerun()
+        with act_col2:
+            if st.button("➕ Pág. en Blanco", help="Inserta una página en blanco después de esta", use_container_width=True):
+                new_bytes = insert_blank_page_bytes(pdf_bytes, current_page, width=page_w, height=page_h)
+                st.session_state["current_editing_pdf"] = new_bytes
+                st.session_state["saved_interactive_pdf"] = new_bytes
+                st.session_state["editor_page_num"] = current_page + 2
+                st.toast(f"Página en blanco insertada en la posición {current_page + 2}", icon="➕")
+                st.rerun()
+        with act_col3:
+            if st.button("📄 Duplicar Pág.", help="Crea una copia idéntica de esta página", use_container_width=True):
+                new_bytes = duplicate_page_bytes(pdf_bytes, current_page)
+                st.session_state["current_editing_pdf"] = new_bytes
+                st.session_state["saved_interactive_pdf"] = new_bytes
+                st.session_state["editor_page_num"] = current_page + 2
+                st.toast(f"Página {current_page + 1} duplicada", icon="📄")
+                st.rerun()
+        with act_col4:
+            if st.button("🗑️ Eliminar Pág.", disabled=(total_p <= 1), help="Elimina esta página del documento", use_container_width=True):
+                new_bytes = delete_page_bytes(pdf_bytes, current_page)
+                st.session_state["current_editing_pdf"] = new_bytes
+                st.session_state["saved_interactive_pdf"] = new_bytes
+                st.session_state["editor_page_num"] = max(1, min(current_page + 1, total_p - 1))
+                st.toast(f"Página eliminada", icon="🗑️")
+                st.rerun()
+        with act_col5:
+            single_page_pdf = extract_single_page_bytes(pdf_bytes, current_page)
+            st.download_button(
+                label=f"📑 Extraer Pág. {current_page + 1}",
+                data=single_page_pdf,
+                file_name=f"{Path(edit_uploaded.name).stem}_pag_{current_page + 1}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                help="Descarga solo esta página como archivo PDF"
+            )
+
         # Renderizar la página actual como imagen para fondo del canvas
         page_pil = render_pdf_page_to_image(pdf_bytes, current_page, dpi=130)
         img_buf = io.BytesIO()
@@ -238,16 +284,76 @@ with tabs[0]:
                 except Exception as ex:
                     st.error(f"Error procesando figuras: {ex}")
 
+        # Botón y estado de descarga
         if st.session_state.get("saved_interactive_pdf"):
-            st.success("🎉 ¡Documento PDF con figuras procesado correctamente!")
-            st.download_button(
-                label="📥 Descargar PDF Editado con Figuras",
-                data=st.session_state["saved_interactive_pdf"],
-                file_name=f"{Path(edit_uploaded.name).stem}_editado.pdf",
-                mime="application/pdf",
-                type="primary",
-                use_container_width=True
+            st.success("🎉 ¡Documento PDF con figuras y modificaciones guardadas con éxito!")
+            dl_col1, dl_col2 = st.columns([3, 1])
+            with dl_col1:
+                st.download_button(
+                    label="📥 Descargar PDF Editado Completo",
+                    data=st.session_state["saved_interactive_pdf"],
+                    file_name=f"{Path(edit_uploaded.name).stem}_editado.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+            with dl_col2:
+                if st.button("🗑️ Descartar Cambios", use_container_width=True):
+                    st.session_state["current_editing_pdf"] = edit_uploaded.getvalue()
+                    st.session_state["saved_interactive_pdf"] = None
+                    st.rerun()
+
+        # Asistente Inteligente Gemini 3.8 Flash para esta página
+        with st.expander("🤖 Asistente Gemini 3.8 Flash para esta Página", expanded=False):
+            st.caption("Aprovecha la inteligencia artificial de Gemini 3.8 Flash para digitalizar texto escaneado (OCR), resumir, traducir o redactar notas sobre la página activa.")
+            gem_c1, gem_c2, gem_c3 = st.columns(3)
+            with gem_c1:
+                if st.button("🔍 Extraer Texto (OCR con IA)", use_container_width=True, key=f"btn_ocr_{current_page}"):
+                    with st.spinner("Gemini 3.8 Flash digitalizando página con OCR..."):
+                        try:
+                            res_ocr = gemini_assist_page(pdf_bytes, current_page, action="ocr")
+                            st.session_state[f"gem_active_res_{current_page}"] = ("OCR de la Página con Gemini 3.8 Flash", res_ocr)
+                        except Exception as ex:
+                            st.error(f"Error al conectar con Gemini API: {ex}")
+            with gem_c2:
+                if st.button("💡 Resumir esta Página", use_container_width=True, key=f"btn_sum_{current_page}"):
+                    with st.spinner("Gemini 3.8 Flash resumiendo puntos clave..."):
+                        try:
+                            res_sum = gemini_assist_page(pdf_bytes, current_page, action="summary")
+                            st.session_state[f"gem_active_res_{current_page}"] = ("Resumen de la Página con Gemini 3.8 Flash", res_sum)
+                        except Exception as ex:
+                            st.error(f"Error al conectar con Gemini API: {ex}")
+            with gem_c3:
+                target_lang = st.selectbox("Traducir página a:", ["Español", "Inglés", "Portugués", "Francés", "Alemán"], key=f"sel_lang_{current_page}")
+                if st.button("🌐 Traducir Página", use_container_width=True, key=f"btn_trans_{current_page}"):
+                    with st.spinner(f"Gemini 3.8 Flash traduciendo a {target_lang}..."):
+                        try:
+                            res_tr = gemini_assist_page(pdf_bytes, current_page, action="translate", target_language=target_lang)
+                            st.session_state[f"gem_active_res_{current_page}"] = (f"Traducción a {target_lang}", res_tr)
+                        except Exception as ex:
+                            st.error(f"Error al conectar con Gemini API: {ex}")
+
+            st.markdown("---")
+            st.markdown("**✍️ Redactor de Notas / Cláusulas Técnicas con Gemini:**")
+            custom_draft = st.text_input(
+                "Instrucción para redactar:",
+                placeholder="Ej: Redacta una nota formal de aprobación técnica para firma de planos.",
+                key=f"input_draft_{current_page}"
             )
+            if st.button("✨ Generar Texto con Gemini 3.8 Flash", key=f"btn_draft_{current_page}"):
+                if custom_draft.strip():
+                    with st.spinner("Gemini 3.8 Flash redactando texto..."):
+                        try:
+                            res_dr = gemini_assist_page(pdf_bytes, current_page, action="draft_note", custom_prompt=custom_draft)
+                            st.session_state[f"gem_active_res_{current_page}"] = ("Texto Generado para Copiar/Insertar", res_dr)
+                        except Exception as ex:
+                            st.error(f"Error con Gemini API: {ex}")
+
+            if f"gem_active_res_{current_page}" in st.session_state:
+                res_title, res_text = st.session_state[f"gem_active_res_{current_page}"]
+                st.info(f"**{res_title}:**")
+                st.markdown(res_text)
+                st.caption("💡 Puedes copiar este texto y usar la herramienta **🔤 Texto** en el editor de arriba para colocarlo en cualquier posición de la hoja.")
 
 # =========================================================================
 # PESTAÑA 2: CONVERTIDOR UNIVERSAL (CAD, OFFICE, IMÁGENES)
