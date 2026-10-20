@@ -30,6 +30,7 @@ from converters.pdf_converter import pdf_to_docx, pdf_to_images, images_to_pdf, 
 from converters.image_converter import convert_image
 from converters.pdf_editor import (
     render_pdf_page_to_image, apply_all_figures_to_pdf,
+    apply_editor_overlay_to_page,
     draw_vector_arrow, draw_vector_circle, draw_vector_rect,
     draw_vector_line, add_vector_text, add_permanent_redaction, add_image_overlay
 )
@@ -139,18 +140,22 @@ with tabs[0]:
     )
 
     if edit_uploaded:
-        pdf_bytes = edit_uploaded.getvalue()
-        
-        # Inicializar sesión de figuras y página
-        if "editor_page_num" not in st.session_state:
+        file_sig = f"{edit_uploaded.name}_{edit_uploaded.size}"
+        if st.session_state.get("active_editor_file_sig") != file_sig:
+            st.session_state["active_editor_file_sig"] = file_sig
+            st.session_state["current_editing_pdf"] = edit_uploaded.getvalue()
+            st.session_state["saved_interactive_pdf"] = None
             st.session_state["editor_page_num"] = 1
+            st.session_state["last_processed_overlay_ts"] = None
+
+        pdf_bytes = st.session_state.get("current_editing_pdf", edit_uploaded.getvalue())
 
         import pymupdf as fitz
         temp_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         total_p = len(temp_doc)
 
         # Barra de navegación de páginas
-        nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 2, 1, 1])
+        nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6 = st.columns([1, 1, 2, 1, 1, 1.5])
         with nav_col1:
             if st.button("⏮️ Primera", disabled=(st.session_state["editor_page_num"] <= 1), use_container_width=True):
                 st.session_state["editor_page_num"] = 1
@@ -179,26 +184,31 @@ with tabs[0]:
             if st.button("Última ⏭️", disabled=(st.session_state["editor_page_num"] >= total_p), use_container_width=True):
                 st.session_state["editor_page_num"] = total_p
                 st.rerun()
+        with nav_col6:
+            if st.button("🔄 Revertir todo", help="Descartar todas las modificaciones y volver al PDF original", use_container_width=True):
+                st.session_state["current_editing_pdf"] = edit_uploaded.getvalue()
+                st.session_state["saved_interactive_pdf"] = None
+                st.session_state["last_processed_overlay_ts"] = None
+                st.rerun()
 
         current_page = st.session_state["editor_page_num"] - 1
         curr_page_obj = temp_doc[current_page]
         page_w = float(curr_page_obj.rect.width)
         page_h = float(curr_page_obj.rect.height)
+        rot_deg = curr_page_obj.rotation if hasattr(curr_page_obj, "rotation") else 0
         temp_doc.close()
 
-        st.caption(f"📄 Editando **Página {current_page + 1} de {total_p}** | Tamaño: **{page_w:.0f} x {page_h:.0f} pt**")
+        st.caption(f"📄 Editando **Página {current_page + 1} de {total_p}** | Tamaño: **{page_w:.0f} x {page_h:.0f} pt** (Rotación: {rot_deg}°)")
 
         # Renderizar la página actual como imagen para fondo del canvas
         page_pil = render_pdf_page_to_image(pdf_bytes, current_page, dpi=130)
         img_buf = io.BytesIO()
         page_pil.save(img_buf, format="PNG")
         bg_b64 = "data:image/png;base64," + base64.b64encode(img_buf.getvalue()).decode("utf-8")
-        pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
 
         # 1. LIENZO INTERACTIVO WYSIWYG
         editor_output = pdf_interactive_editor(
             bg_image_base64=bg_b64,
-            pdf_base64=pdf_b64,
             page_index=current_page,
             page_width=page_w,
             page_height=page_h,
@@ -207,7 +217,10 @@ with tabs[0]:
 
         # Procesar resultado enviado desde el canvas
         if editor_output and isinstance(editor_output, dict):
-            if editor_output.get("overlay_png"):
+            overlay_ts = editor_output.get("timestamp")
+            last_ts = st.session_state.get("last_processed_overlay_ts")
+            if overlay_ts and overlay_ts != last_ts and editor_output.get("overlay_png"):
+                st.session_state["last_processed_overlay_ts"] = overlay_ts
                 overlay_data = editor_output["overlay_png"]
                 if "," in overlay_data:
                     overlay_data = overlay_data.split(",")[1]
@@ -215,14 +228,17 @@ with tabs[0]:
                     overlay_bytes = base64.b64decode(overlay_data)
                     doc_edit = fitz.open(stream=pdf_bytes, filetype="pdf")
                     p_edit = doc_edit[current_page]
-                    p_edit.insert_image(p_edit.rect, stream=overlay_bytes, overlay=True)
+                    apply_editor_overlay_to_page(p_edit, overlay_bytes)
                     saved_pdf = doc_edit.tobytes(deflate=True, garbage=3)
                     doc_edit.close()
+                    st.session_state["current_editing_pdf"] = saved_pdf
                     st.session_state["saved_interactive_pdf"] = saved_pdf
+                    st.toast("✅ ¡Figuras guardadas correctamente en la página actual!", icon="💾")
+                    st.rerun()
                 except Exception as ex:
                     st.error(f"Error procesando figuras: {ex}")
 
-        if "saved_interactive_pdf" in st.session_state:
+        if st.session_state.get("saved_interactive_pdf"):
             st.success("🎉 ¡Documento PDF con figuras procesado correctamente!")
             st.download_button(
                 label="📥 Descargar PDF Editado con Figuras",

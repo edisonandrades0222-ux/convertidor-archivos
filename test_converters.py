@@ -222,6 +222,33 @@ def test_pdf_advanced_ilovepdf_suite(sample_pdf, test_dir):
     crop_pdf(sample_pdf, crop_file, margins=(10, 10, 10, 10))
     assert crop_file.exists()
 
+def test_pdf_editor_overlay_rotation_derotation():
+    import pymupdf as fitz
+    from converters.pdf_editor import apply_editor_overlay_to_page
+    from PIL import Image, ImageDraw
+    import io
+
+    # Crear overlay con un punto rojo en (100, 100)
+    img = Image.new('RGBA', (600, 800), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.ellipse([90, 90, 110, 110], fill=(255, 0, 0, 255))
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    overlay_bytes = buf.getvalue()
+
+    for rot in [0, 90, 180, 270]:
+        doc = fitz.open()
+        w = 600 if rot in [0, 180] else 800
+        h = 800 if rot in [0, 180] else 600
+        page = doc.new_page(width=w, height=h)
+        page.set_rotation(rot)
+
+        apply_editor_overlay_to_page(page, overlay_bytes)
+        pix = page.get_pixmap(dpi=72)
+        r, g, b = pix.pixel(100, 100)
+        assert (r > 200 and g < 50 and b < 50), f"Fallo de posicionamiento en rotación {rot}: RGB=({r},{g},{b})"
+        doc.close()
+
 if __name__ == "__main__":
     ret = pytest.main([__file__, "-v", "-s"])
     sys.exit(ret)

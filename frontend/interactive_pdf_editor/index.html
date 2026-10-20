@@ -6,8 +6,6 @@
   <title>Editor Interactivo de PDF</title>
   <!-- Fabric.js para manipulación visual directa de figuras (drag, resize, rotate) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-  <!-- PDF-Lib para exportación y descarga instantánea en el navegador -->
-  <script src="https://unpkg.com/pdf-lib@1.17.9/dist/pdf-lib.min.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -275,11 +273,13 @@
   // ESTADO Y CONFIGURACIÓN DEL CANVAS
   // =========================================================================
   let canvas = null;
-  let rawPdfBytes = null;
   let pageIndex = 0;
+  let currentLoadedPage = -1;
   let pdfPageWidth = 595;
   let pdfPageHeight = 842;
   let canvasScale = 1.0;
+  let displayW = 595;
+  let displayH = 842;
 
   // Elementos UI
   const strokeColorInput = document.getElementById("stroke-color");
@@ -561,73 +561,57 @@
   // =========================================================================
   document.getElementById("btn-save").onclick = async () => {
     if (!canvas) return;
+    const objs = canvas.getObjects();
+    if (!objs || objs.length === 0) {
+      alert("No has agregado ninguna figura en esta página. Selecciona una herramienta para añadir figuras antes de guardar.");
+      return;
+    }
+
     const btn = document.getElementById("btn-save");
-    btn.innerHTML = "⏳ Generando PDF...";
+    btn.innerHTML = "⏳ Guardando...";
     btn.disabled = true;
 
     try {
-      // 1. Ocultar fondo para exportar ÚNICAMENTE las figuras en alta resolución transparente
+      // 1. Deseleccionar cualquier figura activa para que no se exporten los manejadores azules
+      canvas.discardActiveObject();
+
+      // 2. Ocultar fondo para exportar ÚNICAMENTE las figuras en alta resolución transparente
       const bg = canvas.backgroundImage;
       canvas.backgroundImage = null;
       canvas.renderAll();
 
-      // Exportar overlay transparente en tamaño nativo del PDF
+      // Exportar overlay transparente en dimensiones nativas exactas del PDF sin distorsión de Retina/DPI
+      const mult = pdfPageWidth / canvas.getWidth();
       const overlayDataUrl = canvas.toDataURL({
         format: "png",
-        multiplier: 1.0 / canvasScale
+        left: 0,
+        top: 0,
+        width: canvas.getWidth(),
+        height: canvas.getHeight(),
+        multiplier: mult,
+        enableRetinaScaling: false
       });
 
       // Restaurar fondo en pantalla
       canvas.backgroundImage = bg;
       canvas.renderAll();
 
-      // 2. Si tenemos los bytes del PDF original, usar PDF-Lib para estampar la página directamente
-      if (rawPdfBytes && window.PDFLib) {
-        const { PDFDocument } = window.PDFLib;
-        const pdfDoc = await PDFDocument.load(rawPdfBytes);
-        const pages = pdfDoc.getPages();
-        const targetPage = pages[pageIndex] || pages[0];
+      // Enviar a Streamlit / PyMuPDF para procesamiento vectorial exacto con derotation_matrix
+      sendToStreamlit({
+        status: "success",
+        overlay_png: overlayDataUrl,
+        page_index: pageIndex,
+        timestamp: Date.now()
+      });
 
-        // Convertir overlay base64 a imagen PNG incrustada
-        const pngImage = await pdfDoc.embedPng(overlayDataUrl);
-        const { width, height } = targetPage.getSize();
-
-        targetPage.drawImage(pngImage, {
-          x: 0,
-          y: 0,
-          width: width,
-          height: height
-        });
-
-        const modifiedBytes = await pdfDoc.save();
-
-        // Disparar descarga en el navegador del usuario inmediatamente
-        const blob = new Blob([modifiedBytes], { type: "application/pdf" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "documento_editado_con_figuras.pdf";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        // Enviar a Streamlit para sincronización de sesión
-        sendToStreamlit({
-          status: "success",
-          overlay_png: overlayDataUrl,
-          page_index: pageIndex
-        });
-      } else {
-        // Enviar a Streamlit como fallback
-        sendToStreamlit({
-          status: "overlay_ready",
-          overlay_png: overlayDataUrl,
-          page_index: pageIndex
-        });
-      }
+      btn.innerHTML = "✅ ¡Guardado con Éxito!";
+      setTimeout(() => {
+        btn.innerHTML = "<span>💾</span> Guardar en PDF";
+        btn.disabled = false;
+      }, 1500);
     } catch (err) {
       console.error("Error al guardar PDF:", err);
       alert("Error al generar el PDF: " + err.message);
-    } finally {
       btn.innerHTML = "<span>💾</span> Guardar en PDF";
       btn.disabled = false;
     }
@@ -643,36 +627,21 @@
     if (!args) return;
 
     pageIndex = args.page_index || 0;
-    pdfPageWidth = args.page_width || 595;
-    pdfPageHeight = args.page_height || 842;
+    pdfPageWidth = parseFloat(args.page_width) || 595;
+    pdfPageHeight = parseFloat(args.page_height) || 842;
 
-    // Convertir PDF base64 a Uint8Array si viene de Python
-    if (args.pdf_base64) {
-      try {
-        const binaryStr = atob(args.pdf_base64);
-        const len = binaryStr.length;
-        rawPdfBytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          rawPdfBytes[i] = binaryStr.charCodeAt(i);
-        }
-      } catch (e) {
-        console.error("Error al decodificar PDF base64:", e);
-      }
-    } else if (args.pdf_bytes_array) {
-      rawPdfBytes = new Uint8Array(args.pdf_bytes_array);
-    }
-
-    const bgImageSrc = args.bg_image_base64;
     const maxDisplayWidth = Math.min(window.innerWidth - 40, 800);
     canvasScale = maxDisplayWidth / pdfPageWidth;
-    const displayW = Math.round(pdfPageWidth * canvasScale);
-    const displayH = Math.round(pdfPageHeight * canvasScale);
+    displayW = Math.round(pdfPageWidth * canvasScale);
+    displayH = Math.round(pdfPageHeight * canvasScale);
 
     if (!canvas) {
+      fabric.devicePixelRatio = 1;
       canvas = new fabric.Canvas("pdf-canvas", {
         width: displayW,
         height: displayH,
-        selection: true
+        selection: true,
+        enableRetinaScaling: false
       });
 
       // Modificar estilo de los controles de selección
@@ -685,10 +654,15 @@
         padding: 5
       });
     } else {
+      if (currentLoadedPage !== pageIndex) {
+        canvas.clear();
+      }
       canvas.setWidth(displayW);
       canvas.setHeight(displayH);
     }
+    currentLoadedPage = pageIndex;
 
+    const bgImageSrc = args.bg_image_base64;
     if (bgImageSrc) {
       fabric.Image.fromURL(bgImageSrc, (img) => {
         img.set({

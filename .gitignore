@@ -7,3 +7,6 @@ test_samples/
 env/
 *.log
 bin/cloudflared.exe
+node_modules/
+*.pdf
+!test_samples/*.pdf

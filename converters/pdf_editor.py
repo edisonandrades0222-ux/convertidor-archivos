@@ -32,6 +32,20 @@ def parse_color(color_val: Any) -> Tuple[float, float, float]:
     # Por defecto negro
     return (0.0, 0.0, 0.0)
 
+def map_point(page: fitz.Page, p: Any) -> fitz.Point:
+    """Mapea un punto visual (x, y) a coordenadas nativas de la página respetando su rotación."""
+    pt = fitz.Point(float(p[0]), float(p[1]))
+    if hasattr(page, "rotation") and page.rotation != 0:
+        return pt * page.derotation_matrix
+    return pt
+
+def map_rect(page: fitz.Page, r: Any) -> fitz.Rect:
+    """Mapea un rectángulo visual a coordenadas nativas de la página respetando su rotación."""
+    rect = fitz.Rect(r)
+    if hasattr(page, "rotation") and page.rotation != 0:
+        return rect * page.derotation_matrix
+    return rect
+
 def draw_vector_arrow(
     page: fitz.Page,
     p1: Tuple[float, float],
@@ -44,6 +58,7 @@ def draw_vector_arrow(
 ):
     """
     Dibuja una flecha vectorial profesional desde p1 hasta p2 en la página del PDF.
+    Garantiza posicionamiento exacto sin desajustes por rotación de página.
     """
     c = parse_color(color)
     x1, y1 = float(p1[0]), float(p1[1])
@@ -59,7 +74,7 @@ def draw_vector_arrow(
     head_len = min(head_size, dist * 0.45)
     wing_angle = math.radians(28)
 
-    # Calcular puntos de las aletas de la flecha
+    # Calcular puntos de las aletas de la flecha en espacio visual
     w1_x = x2 - head_len * math.cos(angle - wing_angle)
     w1_y = y2 - head_len * math.sin(angle - wing_angle)
     w2_x = x2 - head_len * math.cos(angle + wing_angle)
@@ -69,18 +84,20 @@ def draw_vector_arrow(
     base_x = x2 - (head_len * 0.8) * math.cos(angle)
     base_y = y2 - (head_len * 0.8) * math.sin(angle)
 
+    # Mapear todos los puntos al espacio nativo de la página
+    mp1 = map_point(page, (x1, y1))
+    mbase = map_point(page, (base_x, base_y))
+    mp2 = map_point(page, (x2, y2))
+    mw1 = map_point(page, (w1_x, w1_y))
+    mw2 = map_point(page, (w2_x, w2_y))
+
     shape = page.new_shape()
     # Trazar cuerpo de la flecha hasta la base
-    shape.draw_line(fitz.Point(x1, y1), fitz.Point(base_x, base_y))
+    shape.draw_line(mp1, mbase)
     shape.finish(color=c, width=width, stroke_opacity=opacity)
 
     # Trazar cabeza de la flecha (triángulo cerrado estilizado)
-    arrowhead = [
-        fitz.Point(x2, y2), 
-        fitz.Point(w1_x, w1_y), 
-        fitz.Point(w2_x, w2_y), 
-        fitz.Point(x2, y2)
-    ]
+    arrowhead = [mp2, mw1, mw2, mp2]
     shape.draw_polyline(arrowhead)
     shape.finish(
         color=c, 
@@ -113,8 +130,9 @@ def draw_vector_circle(
     else:
         rect = fitz.Rect(rect_or_center)
 
+    native_rect = map_rect(page, rect)
     shape = page.new_shape()
-    shape.draw_oval(rect)
+    shape.draw_oval(native_rect)
     shape.finish(
         color=stroke_c,
         fill=fill_c,
@@ -139,10 +157,10 @@ def draw_vector_rect(
     """
     stroke_c = parse_color(color)
     fill_c = parse_color(fill_color) if fill_color is not None else None
-    r = fitz.Rect(rect)
+    native_rect = map_rect(page, rect)
 
     shape = page.new_shape()
-    shape.draw_rect(r)
+    shape.draw_rect(native_rect)
 
     shape.finish(
         color=stroke_c,
@@ -166,8 +184,10 @@ def draw_vector_line(
     Dibuja una línea recta vectorial continua o punteada.
     """
     c = parse_color(color)
+    mp1 = map_point(page, p1)
+    mp2 = map_point(page, p2)
     shape = page.new_shape()
-    shape.draw_line(fitz.Point(p1[0], p1[1]), fitz.Point(p2[0], p2[1]))
+    shape.draw_line(mp1, mp2)
     shape.finish(
         color=c,
         width=width,
@@ -204,14 +224,16 @@ def add_vector_text(
         approx_w = len(text) * fontsize * 0.55 + 10
         approx_h = fontsize * 1.35 + 6
         bg_rect = fitz.Rect(pos[0] - 4, pos[1] - fontsize - 2, pos[0] + approx_w, pos[1] + 4)
-        draw_vector_rect(page, bg_rect, color=bg_c, fill_color=bg_c, width=1, radius=3, fill_opacity=0.85)
+        draw_vector_rect(page, bg_rect, color=bg_c, fill_color=bg_c, width=1, fill_opacity=0.85)
 
+    native_pos = map_point(page, pos)
     page.insert_text(
-        fitz.Point(pos[0], pos[1]),
+        native_pos,
         text,
         fontsize=fontsize,
         fontname=fontname,
-        color=c
+        color=c,
+        rotate=page.rotation if hasattr(page, "rotation") else 0
     )
 
 def add_permanent_redaction(
@@ -225,8 +247,8 @@ def add_permanent_redaction(
     el contenido vectorial, imágenes y texto debajo del rectángulo.
     """
     c = parse_color(fill_color)
-    r = fitz.Rect(rect)
-    annot = page.add_redact_annot(r, text=text, fill=c)
+    native_rect = map_rect(page, rect)
+    page.add_redact_annot(native_rect, text=text, fill=c)
     page.apply_redactions()
 
 def add_image_overlay(
@@ -237,15 +259,16 @@ def add_image_overlay(
     """
     Inserta una imagen o firma visual en el rectángulo indicado de la página.
     """
-    r = fitz.Rect(rect)
+    native_rect = map_rect(page, rect)
+    rot_val = page.rotation if hasattr(page, "rotation") else 0
     if isinstance(image_input, (str, Path)):
-        page.insert_image(r, filename=str(image_input))
+        page.insert_image(native_rect, filename=str(image_input), rotate=rot_val)
     elif isinstance(image_input, bytes):
-        page.insert_image(r, stream=image_input)
+        page.insert_image(native_rect, stream=image_input, rotate=rot_val)
     elif isinstance(image_input, Image.Image):
         buf = io.BytesIO()
         image_input.save(buf, format="PNG")
-        page.insert_image(r, stream=buf.getvalue())
+        page.insert_image(native_rect, stream=buf.getvalue(), rotate=rot_val)
 
 def render_pdf_page_to_image(
     pdf_path_or_bytes: Union[str, Path, bytes],
@@ -338,6 +361,15 @@ def parse_canvas_json(json_data: dict, default_line_as_arrow: bool = False) -> L
                     "width": float(obj.get("strokeWidth", 2.0))
                 })
     return elements
+
+def apply_editor_overlay_to_page(page: fitz.Page, overlay_bytes: bytes):
+    """
+    Incrusta un overlay transparente sobre la página respetando su rotación y matriz exacta.
+    Garantiza posicionamiento milimétrico sin ningún desfase.
+    """
+    nat_rect = page.rect * page.derotation_matrix
+    rot_val = page.rotation if hasattr(page, "rotation") else 0
+    page.insert_image(nat_rect, stream=overlay_bytes, rotate=rot_val, overlay=True)
 
 def apply_canvas_elements_to_pdf(
     pdf_input: Union[str, Path, bytes],
