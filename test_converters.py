@@ -289,6 +289,26 @@ def test_pdf_page_byte_tools(sample_pdf):
     assert len(doc) == 1
     doc.close()
 
+def test_word_editor_module(sample_pdf):
+    from converters.word_editor import (
+        extract_pdf_to_document_data, compile_html_to_pdf, compile_html_to_docx
+    )
+    with open(sample_pdf, "rb") as f:
+        pdf_bytes = f.read()
+
+    doc_data = extract_pdf_to_document_data(pdf_bytes)
+    assert doc_data["total_pages"] >= 1
+    assert len(doc_data["full_text"]) > 0
+    assert len(doc_data["html_content"]) > 0
+
+    # Compilar a PDF
+    compiled_pdf = compile_html_to_pdf(doc_data["html_content"])
+    assert len(compiled_pdf) > 1000
+
+    # Compilar a DOCX
+    compiled_docx = compile_html_to_docx(doc_data["html_content"])
+    assert len(compiled_docx) > 1000
+
 if __name__ == "__main__":
     ret = pytest.main([__file__, "-v", "-s"])
     sys.exit(ret)

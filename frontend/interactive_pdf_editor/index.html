@@ -557,14 +557,22 @@
     const dashed = isDashed() ? [8, 5] : null;
 
     if (active.type === "arrow") {
-      active.set({ opacity: op });
-      active.getObjects().forEach(obj => {
-        if (obj.type === "line") {
-          obj.set({ stroke: color, strokeWidth: sw, strokeDashArray: dashed });
-        } else if (obj.type === "triangle") {
-          obj.set({ fill: color, stroke: color });
-        }
+      active.set({
+        stroke: color,
+        fill: color,
+        strokeWidth: sw,
+        opacity: op,
+        strokeDashArray: dashed
       });
+      if (active.getObjects) {
+        active.getObjects().forEach(obj => {
+          if (obj.type === "line") {
+            obj.set({ stroke: color, strokeWidth: sw, strokeDashArray: dashed });
+          } else if (obj.type === "triangle") {
+            obj.set({ fill: color, stroke: color });
+          }
+        });
+      }
     } else if (active.type === "i-text" || active.type === "text") {
       active.set({
         fill: color,
@@ -643,51 +651,67 @@
   // 1. Mover / Seleccionar
   document.getElementById("btn-select").onclick = () => setMode("select");
 
-  // 2. Flecha
-  document.getElementById("btn-arrow").onclick = () => {
-    setMode("select");
+  // Función para construir SVG Path de flecha exacta donde el tallo termina en la base de la cabeza
+  function buildArrowPathString(x1, y1, x2, y2, sw) {
+    const headLen = Math.max(16, sw * 3.5);
+    const headWidth = Math.max(14, sw * 3.0);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 4) return null;
+
+    const angle = Math.atan2(dy, dx);
+    const actualHeadLen = Math.min(headLen, dist * 0.7);
+
+    // El cuerpo termina exactamente en la base de la cabeza (no entra ni continúa más allá)
+    const bodyEndX = x2 - actualHeadLen * Math.cos(angle);
+    const bodyEndY = y2 - actualHeadLen * Math.sin(angle);
+
+    // Puntas laterales de la cabeza triangular
+    const normalAngle = angle + Math.PI / 2;
+    const hx1 = bodyEndX + (headWidth / 2) * Math.cos(normalAngle);
+    const hy1 = bodyEndY + (headWidth / 2) * Math.sin(normalAngle);
+    const hx2 = bodyEndX - (headWidth / 2) * Math.cos(normalAngle);
+    const hy2 = bodyEndY - (headWidth / 2) * Math.sin(normalAngle);
+
+    // Path limpio: Tallo que termina en la base + Triángulo cerrado de la punta
+    return `M ${x1} ${y1} L ${bodyEndX} ${bodyEndY} M ${x2} ${y2} L ${hx1} ${hy1} L ${hx2} ${hy2} Z`;
+  }
+
+  function spawnArrow(x1, y1, x2, y2) {
     const sw = getStrokeWidth();
     const color = getStrokeColor();
     const op = getOpacity();
     const dashed = isDashed() ? [8, 5] : null;
 
-    const line = new fabric.Line([0, 0, 160, 0], {
+    const pathData = buildArrowPathString(x1, y1, x2, y2, sw);
+    if (!pathData) return null;
+
+    const arrow = new fabric.Path(pathData, {
       stroke: color,
       strokeWidth: sw,
-      strokeDashArray: dashed,
-      originX: 'center',
-      originY: 'center',
-      selectable: false
-    });
-
-    const headSize = Math.max(14, sw * 4);
-    const head = new fabric.Triangle({
-      left: 80,
-      top: 0,
-      angle: 90,
-      width: headSize,
-      height: headSize,
       fill: color,
-      stroke: color,
-      originX: 'center',
-      originY: 'center',
-      selectable: false
-    });
-
-    const arrowGroup = new fabric.Group([line, head], {
-      left: 100,
-      top: 100,
-      type: 'arrow',
+      strokeLineCap: 'round',
+      strokeLineJoin: 'miter',
       opacity: op,
+      strokeDashArray: dashed,
+      type: 'arrow',
       cornerColor: '#3b8ed0',
       cornerSize: 10,
       transparentCorners: false
     });
 
-    canvas.add(arrowGroup);
-    canvas.setActiveObject(arrowGroup);
+    canvas.add(arrow);
+    canvas.setActiveObject(arrow);
     canvas.renderAll();
     saveHistoryState();
+    return arrow;
+  }
+
+  // 2. Flecha
+  document.getElementById("btn-arrow").onclick = () => {
+    setMode("select");
+    spawnArrow(100, 150, 260, 150);
   };
 
   // 3. Rectángulo

@@ -57,6 +57,16 @@ except ImportError as _e2:
     st.error(f"Error cargando converters.gemini_pdf_assistant: {_e2}")
     st.code(traceback.format_exc())
 
+try:
+    from converters.word_editor import (
+        extract_pdf_to_document_data, compile_html_to_pdf,
+        compile_html_to_docx, gemini_ai_word_assistant
+    )
+except ImportError as _e3:
+    import traceback
+    st.error(f"Error cargando converters.word_editor: {_e3}")
+    st.code(traceback.format_exc())
+
 # Garantizar fuentes disponibles de forma eficiente
 @st.cache_resource
 def init_fonts():
@@ -163,209 +173,371 @@ with tabs[0]:
 
         pdf_bytes = st.session_state.get("current_editing_pdf", edit_uploaded.getvalue())
 
-        import pymupdf as fitz
-        temp_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        total_p = len(temp_doc)
-
-        # Barra de navegación de páginas
-        nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6 = st.columns([1, 1, 2, 1, 1, 1.5])
-        with nav_col1:
-            if st.button("⏮️ Primera", disabled=(st.session_state["editor_page_num"] <= 1), use_container_width=True):
-                st.session_state["editor_page_num"] = 1
-                st.rerun()
-        with nav_col2:
-            if st.button("◀️ Anterior", disabled=(st.session_state["editor_page_num"] <= 1), use_container_width=True):
-                st.session_state["editor_page_num"] = max(1, st.session_state["editor_page_num"] - 1)
-                st.rerun()
-        with nav_col3:
-            curr_sel = st.number_input(
-                "Página activa:",
-                min_value=1,
-                max_value=total_p,
-                value=st.session_state["editor_page_num"],
-                step=1,
-                label_visibility="collapsed"
-            )
-            if curr_sel != st.session_state["editor_page_num"]:
-                st.session_state["editor_page_num"] = curr_sel
-                st.rerun()
-        with nav_col4:
-            if st.button("Siguiente ▶️", disabled=(st.session_state["editor_page_num"] >= total_p), use_container_width=True):
-                st.session_state["editor_page_num"] = min(total_p, st.session_state["editor_page_num"] + 1)
-                st.rerun()
-        with nav_col5:
-            if st.button("Última ⏭️", disabled=(st.session_state["editor_page_num"] >= total_p), use_container_width=True):
-                st.session_state["editor_page_num"] = total_p
-                st.rerun()
-        with nav_col6:
-            if st.button("🔄 Revertir todo", help="Descartar todas las modificaciones y volver al PDF original", use_container_width=True):
-                st.session_state["current_editing_pdf"] = edit_uploaded.getvalue()
-                st.session_state["saved_interactive_pdf"] = None
-                st.session_state["last_processed_overlay_ts"] = None
-                st.rerun()
-
-        current_page = st.session_state["editor_page_num"] - 1
-        curr_page_obj = temp_doc[current_page]
-        page_w = float(curr_page_obj.rect.width)
-        page_h = float(curr_page_obj.rect.height)
-        rot_deg = curr_page_obj.rotation if hasattr(curr_page_obj, "rotation") else 0
-        temp_doc.close()
-
-        st.caption(f"📄 Editando **Página {current_page + 1} de {total_p}** | Tamaño: **{page_w:.0f} x {page_h:.0f} pt** (Rotación: {rot_deg}°)")
-
-        # Barra de Acciones Rápidas sobre la Página (Suite iLovePDF)
-        act_col1, act_col2, act_col3, act_col4, act_col5 = st.columns(5)
-        with act_col1:
-            if st.button("🔄 Girar (+90°)", help="Gira la página activa 90 grados a la derecha", use_container_width=True):
-                new_bytes = rotate_page_bytes(pdf_bytes, current_page, 90)
-                st.session_state["current_editing_pdf"] = new_bytes
-                st.session_state["saved_interactive_pdf"] = new_bytes
-                st.toast(f"Página {current_page + 1} rotada 90°", icon="🔄")
-                st.rerun()
-        with act_col2:
-            if st.button("➕ Pág. en Blanco", help="Inserta una página en blanco después de esta", use_container_width=True):
-                new_bytes = insert_blank_page_bytes(pdf_bytes, current_page, width=page_w, height=page_h)
-                st.session_state["current_editing_pdf"] = new_bytes
-                st.session_state["saved_interactive_pdf"] = new_bytes
-                st.session_state["editor_page_num"] = current_page + 2
-                st.toast(f"Página en blanco insertada en la posición {current_page + 2}", icon="➕")
-                st.rerun()
-        with act_col3:
-            if st.button("📄 Duplicar Pág.", help="Crea una copia idéntica de esta página", use_container_width=True):
-                new_bytes = duplicate_page_bytes(pdf_bytes, current_page)
-                st.session_state["current_editing_pdf"] = new_bytes
-                st.session_state["saved_interactive_pdf"] = new_bytes
-                st.session_state["editor_page_num"] = current_page + 2
-                st.toast(f"Página {current_page + 1} duplicada", icon="📄")
-                st.rerun()
-        with act_col4:
-            if st.button("🗑️ Eliminar Pág.", disabled=(total_p <= 1), help="Elimina esta página del documento", use_container_width=True):
-                new_bytes = delete_page_bytes(pdf_bytes, current_page)
-                st.session_state["current_editing_pdf"] = new_bytes
-                st.session_state["saved_interactive_pdf"] = new_bytes
-                st.session_state["editor_page_num"] = max(1, min(current_page + 1, total_p - 1))
-                st.toast(f"Página eliminada", icon="🗑️")
-                st.rerun()
-        with act_col5:
-            single_page_pdf = extract_single_page_bytes(pdf_bytes, current_page)
-            st.download_button(
-                label=f"📑 Extraer Pág. {current_page + 1}",
-                data=single_page_pdf,
-                file_name=f"{Path(edit_uploaded.name).stem}_pag_{current_page + 1}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                help="Descarga solo esta página como archivo PDF"
-            )
-
-        # Renderizar la página actual como imagen para fondo del canvas
-        page_pil = render_pdf_page_to_image(pdf_bytes, current_page, dpi=130)
-        img_buf = io.BytesIO()
-        page_pil.save(img_buf, format="PNG")
-        bg_b64 = "data:image/png;base64," + base64.b64encode(img_buf.getvalue()).decode("utf-8")
-
-        # 1. LIENZO INTERACTIVO WYSIWYG
-        editor_output = pdf_interactive_editor(
-            bg_image_base64=bg_b64,
-            page_index=current_page,
-            page_width=page_w,
-            page_height=page_h,
-            key=f"visual_canvas_{current_page}"
+        edit_mode = st.radio(
+            "Selecciona el Modo de Edición:",
+            [
+                "🎨 1. Editor Visual (Figuras, Flechas, Firmas, Sellos y Censura)",
+                "📝 2. Modo Word / Procesador de Texto (Editar y Reescribir Texto en Línea)"
+            ],
+            horizontal=True,
+            key="pdf_editor_mode_radio"
         )
 
-        # Procesar resultado enviado desde el canvas
-        if editor_output and isinstance(editor_output, dict):
-            overlay_ts = editor_output.get("timestamp")
-            last_ts = st.session_state.get("last_processed_overlay_ts")
-            if overlay_ts and overlay_ts != last_ts and editor_output.get("overlay_png"):
-                st.session_state["last_processed_overlay_ts"] = overlay_ts
-                overlay_data = editor_output["overlay_png"]
-                if "," in overlay_data:
-                    overlay_data = overlay_data.split(",")[1]
-                try:
-                    overlay_bytes = base64.b64decode(overlay_data)
-                    doc_edit = fitz.open(stream=pdf_bytes, filetype="pdf")
-                    p_edit = doc_edit[current_page]
-                    apply_editor_overlay_to_page(p_edit, overlay_bytes)
-                    saved_pdf = doc_edit.tobytes(deflate=True, garbage=3)
-                    doc_edit.close()
-                    st.session_state["current_editing_pdf"] = saved_pdf
-                    st.session_state["saved_interactive_pdf"] = saved_pdf
-                    st.toast("✅ ¡Figuras guardadas correctamente en la página actual!", icon="💾")
-                    st.rerun()
-                except Exception as ex:
-                    st.error(f"Error procesando figuras: {ex}")
+        if edit_mode.startswith("📝 2."):
+            st.subheader("📝 Modo Procesador de Texto (Estilo Microsoft Word)")
+            st.caption("Edita, elimina y reescribe libremente el texto del PDF en línea como si estuvieras en Word. Corrige errores tipográficos, modifica cláusulas o cambia redacción con asistencia de Gemini 3.8 Flash.")
 
-        # Botón y estado de descarga
-        if st.session_state.get("saved_interactive_pdf"):
-            st.success("🎉 ¡Documento PDF con figuras y modificaciones guardadas con éxito!")
-            dl_col1, dl_col2 = st.columns([3, 1])
-            with dl_col1:
+            # Extraer estructura del documento si es la primera vez o cambió de archivo
+            if "word_editor_data" not in st.session_state or st.session_state.get("word_editor_sig") != file_sig:
+                st.session_state["word_editor_sig"] = file_sig
+                st.session_state["word_editor_data"] = extract_pdf_to_document_data(pdf_bytes)
+                st.session_state["word_editor_text"] = st.session_state["word_editor_data"]["full_text"]
+
+            doc_data = st.session_state["word_editor_data"]
+
+            # Selector de sección o página para referencia
+            page_options = ["📄 Todo el Documento Completo"] + [f"Página {p['page_num']}" for p in doc_data["pages"]]
+            selected_view = st.selectbox("Sección para cargar en el editor:", page_options, key="word_page_sel")
+            if selected_view != "📄 Todo el Documento Completo":
+                p_num = int(selected_view.split(" ")[1])
+                st.info(f"💡 Mostrando texto de la **Página {p_num}**. Puedes editarlo directamente abajo.")
+                current_edit_val = doc_data["pages"][p_num - 1]["text"]
+            else:
+                current_edit_val = st.session_state.get("word_editor_text", doc_data["full_text"])
+
+            # Barra de herramientas de formato rápido
+            fmt_c1, fmt_c2, fmt_c3, fmt_c4, fmt_c5 = st.columns(5)
+            with fmt_c1:
+                if st.button("➕ Título H1", use_container_width=True, help="Insertar título principal"):
+                    st.session_state["word_editor_text"] = "# TÍTULO PRINCIPAL\n\n" + st.session_state.get("word_editor_text", "")
+                    st.rerun()
+            with fmt_c2:
+                if st.button("➕ Subtítulo H2", use_container_width=True, help="Insertar subtítulo"):
+                    st.session_state["word_editor_text"] = "## Subtítulo de Sección\n\n" + st.session_state.get("word_editor_text", "")
+                    st.rerun()
+            with fmt_c3:
+                if st.button("➕ Viñeta", use_container_width=True, help="Insertar viñeta"):
+                    st.session_state["word_editor_text"] = "- Punto importante a destacar\n" + st.session_state.get("word_editor_text", "")
+                    st.rerun()
+            with fmt_c4:
+                if st.button("➕ Cláusula / Nota", use_container_width=True, help="Insertar recuadro formal"):
+                    st.session_state["word_editor_text"] = "> NOTA TÉCNICA: Modificación aprobada conforme a especificaciones.\n\n" + st.session_state.get("word_editor_text", "")
+                    st.rerun()
+            with fmt_c5:
+                if st.button("🔄 Restaurar Texto", use_container_width=True, help="Restaurar el texto original extraído del PDF"):
+                    st.session_state["word_editor_text"] = doc_data["full_text"]
+                    st.toast("Texto restaurado al contenido original del PDF", icon="🔄")
+                    st.rerun()
+
+            # Área de edición de texto enriquecida
+            edited_text = st.text_area(
+                "Contenido del Documento (Edita, elimina o agrega texto como en Word):",
+                value=st.session_state.get("word_editor_text", current_edit_val),
+                height=450,
+                key="word_editor_textarea"
+            )
+            st.session_state["word_editor_text"] = edited_text
+
+            # Estadísticas en vivo
+            w_count = len(edited_text.split())
+            c_count = len(edited_text)
+            st.caption(f"📊 Estadísticas: **{w_count:,} palabras** | **{c_count:,} caracteres** | Párrafos: **{len([p for p in edited_text.splitlines() if p.strip()]):,}**")
+
+            # Asistente Gemini 3.8 Flash para redacción
+            with st.expander("🤖 Asistente Gemini 3.8 Flash para Redacción y Corrección", expanded=False):
+                st.markdown("Aplica inteligencia artificial con **Gemini 3.8 Flash** para perfeccionar tu documento:")
+                ai_c1, ai_c2, ai_c3, ai_c4 = st.columns(4)
+                with ai_c1:
+                    if st.button("🪄 Corregir Ortografía", use_container_width=True, help="Corrige errores ortográficos, tildes y puntuación"):
+                        with st.spinner("Gemini 3.8 Flash corrigiendo gramática y ortografía..."):
+                            try:
+                                corrected = gemini_ai_word_assistant(edited_text, action="grammar")
+                                st.session_state["word_editor_text"] = corrected
+                                st.toast("¡Texto corregido con Gemini 3.8 Flash!", icon="🪄")
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Error con Gemini API: {ex}")
+                with ai_c2:
+                    if st.button("👔 Tono Ejecutivo", use_container_width=True, help="Reescribe con redacción formal corporativa"):
+                        with st.spinner("Gemini 3.8 Flash elevando a redacción formal..."):
+                            try:
+                                formal_t = gemini_ai_word_assistant(edited_text, action="formal")
+                                st.session_state["word_editor_text"] = formal_t
+                                st.toast("¡Redacción formal aplicada!", icon="👔")
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Error con Gemini API: {ex}")
+                with ai_c3:
+                    if st.button("🌐 Traducir a Inglés", use_container_width=True):
+                        with st.spinner("Gemini 3.8 Flash traduciendo al inglés..."):
+                            try:
+                                en_t = gemini_ai_word_assistant(edited_text, action="translate_en")
+                                st.session_state["word_editor_text"] = en_t
+                                st.toast("¡Documento traducido a inglés!", icon="🌐")
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Error con Gemini API: {ex}")
+                with ai_c4:
+                    if st.button("📋 Resumen Ejecutivo", use_container_width=True):
+                        with st.spinner("Gemini 3.8 Flash sintetizando..."):
+                            try:
+                                sum_t = gemini_ai_word_assistant(edited_text, action="summarize")
+                                st.info(f"**Resumen Ejecutivo:**\n\n{sum_t}")
+                            except Exception as ex:
+                                st.error(f"Error con Gemini API: {ex}")
+
+                # Redacción personalizada con Gemini
+                ai_inst = st.text_input(
+                    "O escribe una orden para redactar o transformar:",
+                    placeholder="Ej: Agrega una sección de conclusiones y firma responsable al final.",
+                    key="word_custom_prompt"
+                )
+                if st.button("✨ Ejecutar con Gemini 3.8 Flash", key="btn_exec_gemini_word"):
+                    if ai_inst.strip():
+                        with st.spinner("Gemini 3.8 Flash redactando..."):
+                            try:
+                                res_inst = gemini_ai_word_assistant(edited_text, action="custom", custom_instruction=ai_inst)
+                                st.session_state["word_editor_text"] = res_inst
+                                st.toast("¡Documento actualizado con Gemini 3.8 Flash!", icon="✨")
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Error con Gemini API: {ex}")
+
+            # Exportación con 1 Clic
+            st.markdown("---")
+            st.markdown("##### 📥 Exportar Documento Editado:")
+            down_c1, down_c2 = st.columns(2)
+            with down_c1:
+                docx_bytes = compile_html_to_docx(edited_text, doc_title=Path(edit_uploaded.name).stem)
                 st.download_button(
-                    label="📥 Descargar PDF Editado Completo",
-                    data=st.session_state["saved_interactive_pdf"],
-                    file_name=f"{Path(edit_uploaded.name).stem}_editado.pdf",
+                    label="📄 Descargar como Word Editable (.docx)",
+                    data=docx_bytes,
+                    file_name=f"{Path(edit_uploaded.name).stem}_editado.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary",
+                    use_container_width=True,
+                    help="Descarga el documento con formato nativo de Microsoft Word para abrirlo en Word o Google Docs"
+                )
+            with down_c2:
+                pdf_compiled_bytes = compile_html_to_pdf(edited_text, doc_title=Path(edit_uploaded.name).stem)
+                st.download_button(
+                    label="📥 Descargar como PDF Listo (.pdf)",
+                    data=pdf_compiled_bytes,
+                    file_name=f"{Path(edit_uploaded.name).stem}_editado_word.pdf",
                     mime="application/pdf",
                     type="primary",
-                    use_container_width=True
+                    use_container_width=True,
+                    help="Compila y descarga el texto editado directamente como un PDF nuevo y profesional"
                 )
-            with dl_col2:
-                if st.button("🗑️ Descartar Cambios", use_container_width=True):
+
+        else:
+            # =========================================================================
+            # MODO 1: LIENZO VISUAL (FIGURAS, FLECHAS, FIRMAS, SELLOS Y CENSURA)
+            # =========================================================================
+
+            import pymupdf as fitz
+            temp_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            total_p = len(temp_doc)
+    
+            # Barra de navegación de páginas
+            nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6 = st.columns([1, 1, 2, 1, 1, 1.5])
+            with nav_col1:
+                if st.button("⏮️ Primera", disabled=(st.session_state["editor_page_num"] <= 1), use_container_width=True):
+                    st.session_state["editor_page_num"] = 1
+                    st.rerun()
+            with nav_col2:
+                if st.button("◀️ Anterior", disabled=(st.session_state["editor_page_num"] <= 1), use_container_width=True):
+                    st.session_state["editor_page_num"] = max(1, st.session_state["editor_page_num"] - 1)
+                    st.rerun()
+            with nav_col3:
+                curr_sel = st.number_input(
+                    "Página activa:",
+                    min_value=1,
+                    max_value=total_p,
+                    value=st.session_state["editor_page_num"],
+                    step=1,
+                    label_visibility="collapsed"
+                )
+                if curr_sel != st.session_state["editor_page_num"]:
+                    st.session_state["editor_page_num"] = curr_sel
+                    st.rerun()
+            with nav_col4:
+                if st.button("Siguiente ▶️", disabled=(st.session_state["editor_page_num"] >= total_p), use_container_width=True):
+                    st.session_state["editor_page_num"] = min(total_p, st.session_state["editor_page_num"] + 1)
+                    st.rerun()
+            with nav_col5:
+                if st.button("Última ⏭️", disabled=(st.session_state["editor_page_num"] >= total_p), use_container_width=True):
+                    st.session_state["editor_page_num"] = total_p
+                    st.rerun()
+            with nav_col6:
+                if st.button("🔄 Revertir todo", help="Descartar todas las modificaciones y volver al PDF original", use_container_width=True):
                     st.session_state["current_editing_pdf"] = edit_uploaded.getvalue()
                     st.session_state["saved_interactive_pdf"] = None
+                    st.session_state["last_processed_overlay_ts"] = None
                     st.rerun()
-
-        # Asistente Inteligente Gemini 3.8 Flash para esta página
-        with st.expander("🤖 Asistente Gemini 3.8 Flash para esta Página", expanded=False):
-            st.caption("Aprovecha la inteligencia artificial de Gemini 3.8 Flash para digitalizar texto escaneado (OCR), resumir, traducir o redactar notas sobre la página activa.")
-            gem_c1, gem_c2, gem_c3 = st.columns(3)
-            with gem_c1:
-                if st.button("🔍 Extraer Texto (OCR con IA)", use_container_width=True, key=f"btn_ocr_{current_page}"):
-                    with st.spinner("Gemini 3.8 Flash digitalizando página con OCR..."):
-                        try:
-                            res_ocr = gemini_assist_page(pdf_bytes, current_page, action="ocr")
-                            st.session_state[f"gem_active_res_{current_page}"] = ("OCR de la Página con Gemini 3.8 Flash", res_ocr)
-                        except Exception as ex:
-                            st.error(f"Error al conectar con Gemini API: {ex}")
-            with gem_c2:
-                if st.button("💡 Resumir esta Página", use_container_width=True, key=f"btn_sum_{current_page}"):
-                    with st.spinner("Gemini 3.8 Flash resumiendo puntos clave..."):
-                        try:
-                            res_sum = gemini_assist_page(pdf_bytes, current_page, action="summary")
-                            st.session_state[f"gem_active_res_{current_page}"] = ("Resumen de la Página con Gemini 3.8 Flash", res_sum)
-                        except Exception as ex:
-                            st.error(f"Error al conectar con Gemini API: {ex}")
-            with gem_c3:
-                target_lang = st.selectbox("Traducir página a:", ["Español", "Inglés", "Portugués", "Francés", "Alemán"], key=f"sel_lang_{current_page}")
-                if st.button("🌐 Traducir Página", use_container_width=True, key=f"btn_trans_{current_page}"):
-                    with st.spinner(f"Gemini 3.8 Flash traduciendo a {target_lang}..."):
-                        try:
-                            res_tr = gemini_assist_page(pdf_bytes, current_page, action="translate", target_language=target_lang)
-                            st.session_state[f"gem_active_res_{current_page}"] = (f"Traducción a {target_lang}", res_tr)
-                        except Exception as ex:
-                            st.error(f"Error al conectar con Gemini API: {ex}")
-
-            st.markdown("---")
-            st.markdown("**✍️ Redactor de Notas / Cláusulas Técnicas con Gemini:**")
-            custom_draft = st.text_input(
-                "Instrucción para redactar:",
-                placeholder="Ej: Redacta una nota formal de aprobación técnica para firma de planos.",
-                key=f"input_draft_{current_page}"
+    
+            current_page = st.session_state["editor_page_num"] - 1
+            curr_page_obj = temp_doc[current_page]
+            page_w = float(curr_page_obj.rect.width)
+            page_h = float(curr_page_obj.rect.height)
+            rot_deg = curr_page_obj.rotation if hasattr(curr_page_obj, "rotation") else 0
+            temp_doc.close()
+    
+            st.caption(f"📄 Editando **Página {current_page + 1} de {total_p}** | Tamaño: **{page_w:.0f} x {page_h:.0f} pt** (Rotación: {rot_deg}°)")
+    
+            # Barra de Acciones Rápidas sobre la Página (Suite iLovePDF)
+            act_col1, act_col2, act_col3, act_col4, act_col5 = st.columns(5)
+            with act_col1:
+                if st.button("🔄 Girar (+90°)", help="Gira la página activa 90 grados a la derecha", use_container_width=True):
+                    new_bytes = rotate_page_bytes(pdf_bytes, current_page, 90)
+                    st.session_state["current_editing_pdf"] = new_bytes
+                    st.session_state["saved_interactive_pdf"] = new_bytes
+                    st.toast(f"Página {current_page + 1} rotada 90°", icon="🔄")
+                    st.rerun()
+            with act_col2:
+                if st.button("➕ Pág. en Blanco", help="Inserta una página en blanco después de esta", use_container_width=True):
+                    new_bytes = insert_blank_page_bytes(pdf_bytes, current_page, width=page_w, height=page_h)
+                    st.session_state["current_editing_pdf"] = new_bytes
+                    st.session_state["saved_interactive_pdf"] = new_bytes
+                    st.session_state["editor_page_num"] = current_page + 2
+                    st.toast(f"Página en blanco insertada en la posición {current_page + 2}", icon="➕")
+                    st.rerun()
+            with act_col3:
+                if st.button("📄 Duplicar Pág.", help="Crea una copia idéntica de esta página", use_container_width=True):
+                    new_bytes = duplicate_page_bytes(pdf_bytes, current_page)
+                    st.session_state["current_editing_pdf"] = new_bytes
+                    st.session_state["saved_interactive_pdf"] = new_bytes
+                    st.session_state["editor_page_num"] = current_page + 2
+                    st.toast(f"Página {current_page + 1} duplicada", icon="📄")
+                    st.rerun()
+            with act_col4:
+                if st.button("🗑️ Eliminar Pág.", disabled=(total_p <= 1), help="Elimina esta página del documento", use_container_width=True):
+                    new_bytes = delete_page_bytes(pdf_bytes, current_page)
+                    st.session_state["current_editing_pdf"] = new_bytes
+                    st.session_state["saved_interactive_pdf"] = new_bytes
+                    st.session_state["editor_page_num"] = max(1, min(current_page + 1, total_p - 1))
+                    st.toast(f"Página eliminada", icon="🗑️")
+                    st.rerun()
+            with act_col5:
+                single_page_pdf = extract_single_page_bytes(pdf_bytes, current_page)
+                st.download_button(
+                    label=f"📑 Extraer Pág. {current_page + 1}",
+                    data=single_page_pdf,
+                    file_name=f"{Path(edit_uploaded.name).stem}_pag_{current_page + 1}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    help="Descarga solo esta página como archivo PDF"
+                )
+    
+            # Renderizar la página actual como imagen para fondo del canvas
+            page_pil = render_pdf_page_to_image(pdf_bytes, current_page, dpi=130)
+            img_buf = io.BytesIO()
+            page_pil.save(img_buf, format="PNG")
+            bg_b64 = "data:image/png;base64," + base64.b64encode(img_buf.getvalue()).decode("utf-8")
+    
+            # 1. LIENZO INTERACTIVO WYSIWYG
+            editor_output = pdf_interactive_editor(
+                bg_image_base64=bg_b64,
+                page_index=current_page,
+                page_width=page_w,
+                page_height=page_h,
+                key=f"visual_canvas_{current_page}"
             )
-            if st.button("✨ Generar Texto con Gemini 3.8 Flash", key=f"btn_draft_{current_page}"):
-                if custom_draft.strip():
-                    with st.spinner("Gemini 3.8 Flash redactando texto..."):
-                        try:
-                            res_dr = gemini_assist_page(pdf_bytes, current_page, action="draft_note", custom_prompt=custom_draft)
-                            st.session_state[f"gem_active_res_{current_page}"] = ("Texto Generado para Copiar/Insertar", res_dr)
-                        except Exception as ex:
-                            st.error(f"Error con Gemini API: {ex}")
-
-            if f"gem_active_res_{current_page}" in st.session_state:
-                res_title, res_text = st.session_state[f"gem_active_res_{current_page}"]
-                st.info(f"**{res_title}:**")
-                st.markdown(res_text)
-                st.caption("💡 Puedes copiar este texto y usar la herramienta **🔤 Texto** en el editor de arriba para colocarlo en cualquier posición de la hoja.")
-
+    
+            # Procesar resultado enviado desde el canvas
+            if editor_output and isinstance(editor_output, dict):
+                overlay_ts = editor_output.get("timestamp")
+                last_ts = st.session_state.get("last_processed_overlay_ts")
+                if overlay_ts and overlay_ts != last_ts and editor_output.get("overlay_png"):
+                    st.session_state["last_processed_overlay_ts"] = overlay_ts
+                    overlay_data = editor_output["overlay_png"]
+                    if "," in overlay_data:
+                        overlay_data = overlay_data.split(",")[1]
+                    try:
+                        overlay_bytes = base64.b64decode(overlay_data)
+                        doc_edit = fitz.open(stream=pdf_bytes, filetype="pdf")
+                        p_edit = doc_edit[current_page]
+                        apply_editor_overlay_to_page(p_edit, overlay_bytes)
+                        saved_pdf = doc_edit.tobytes(deflate=True, garbage=3)
+                        doc_edit.close()
+                        st.session_state["current_editing_pdf"] = saved_pdf
+                        st.session_state["saved_interactive_pdf"] = saved_pdf
+                        st.toast("✅ ¡Figuras guardadas correctamente en la página actual!", icon="💾")
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Error procesando figuras: {ex}")
+    
+            # Botón y estado de descarga
+            if st.session_state.get("saved_interactive_pdf"):
+                st.success("🎉 ¡Documento PDF con figuras y modificaciones guardadas con éxito!")
+                dl_col1, dl_col2 = st.columns([3, 1])
+                with dl_col1:
+                    st.download_button(
+                        label="📥 Descargar PDF Editado Completo",
+                        data=st.session_state["saved_interactive_pdf"],
+                        file_name=f"{Path(edit_uploaded.name).stem}_editado.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True
+                    )
+                with dl_col2:
+                    if st.button("🗑️ Descartar Cambios", use_container_width=True):
+                        st.session_state["current_editing_pdf"] = edit_uploaded.getvalue()
+                        st.session_state["saved_interactive_pdf"] = None
+                        st.rerun()
+    
+            # Asistente Inteligente Gemini 3.8 Flash para esta página
+            with st.expander("🤖 Asistente Gemini 3.8 Flash para esta Página", expanded=False):
+                st.caption("Aprovecha la inteligencia artificial de Gemini 3.8 Flash para digitalizar texto escaneado (OCR), resumir, traducir o redactar notas sobre la página activa.")
+                gem_c1, gem_c2, gem_c3 = st.columns(3)
+                with gem_c1:
+                    if st.button("🔍 Extraer Texto (OCR con IA)", use_container_width=True, key=f"btn_ocr_{current_page}"):
+                        with st.spinner("Gemini 3.8 Flash digitalizando página con OCR..."):
+                            try:
+                                res_ocr = gemini_assist_page(pdf_bytes, current_page, action="ocr")
+                                st.session_state[f"gem_active_res_{current_page}"] = ("OCR de la Página con Gemini 3.8 Flash", res_ocr)
+                            except Exception as ex:
+                                st.error(f"Error al conectar con Gemini API: {ex}")
+                with gem_c2:
+                    if st.button("💡 Resumir esta Página", use_container_width=True, key=f"btn_sum_{current_page}"):
+                        with st.spinner("Gemini 3.8 Flash resumiendo puntos clave..."):
+                            try:
+                                res_sum = gemini_assist_page(pdf_bytes, current_page, action="summary")
+                                st.session_state[f"gem_active_res_{current_page}"] = ("Resumen de la Página con Gemini 3.8 Flash", res_sum)
+                            except Exception as ex:
+                                st.error(f"Error al conectar con Gemini API: {ex}")
+                with gem_c3:
+                    target_lang = st.selectbox("Traducir página a:", ["Español", "Inglés", "Portugués", "Francés", "Alemán"], key=f"sel_lang_{current_page}")
+                    if st.button("🌐 Traducir Página", use_container_width=True, key=f"btn_trans_{current_page}"):
+                        with st.spinner(f"Gemini 3.8 Flash traduciendo a {target_lang}..."):
+                            try:
+                                res_tr = gemini_assist_page(pdf_bytes, current_page, action="translate", target_language=target_lang)
+                                st.session_state[f"gem_active_res_{current_page}"] = (f"Traducción a {target_lang}", res_tr)
+                            except Exception as ex:
+                                st.error(f"Error al conectar con Gemini API: {ex}")
+    
+                st.markdown("---")
+                st.markdown("**✍️ Redactor de Notas / Cláusulas Técnicas con Gemini:**")
+                custom_draft = st.text_input(
+                    "Instrucción para redactar:",
+                    placeholder="Ej: Redacta una nota formal de aprobación técnica para firma de planos.",
+                    key=f"input_draft_{current_page}"
+                )
+                if st.button("✨ Generar Texto con Gemini 3.8 Flash", key=f"btn_draft_{current_page}"):
+                    if custom_draft.strip():
+                        with st.spinner("Gemini 3.8 Flash redactando texto..."):
+                            try:
+                                res_dr = gemini_assist_page(pdf_bytes, current_page, action="draft_note", custom_prompt=custom_draft)
+                                st.session_state[f"gem_active_res_{current_page}"] = ("Texto Generado para Copiar/Insertar", res_dr)
+                            except Exception as ex:
+                                st.error(f"Error con Gemini API: {ex}")
+    
+                if f"gem_active_res_{current_page}" in st.session_state:
+                    res_title, res_text = st.session_state[f"gem_active_res_{current_page}"]
+                    st.info(f"**{res_title}:**")
+                    st.markdown(res_text)
+                    st.caption("💡 Puedes copiar este texto y usar la herramienta **🔤 Texto** en el editor de arriba para colocarlo en cualquier posición de la hoja.")
+    
 # =========================================================================
 # PESTAÑA 2: CONVERTIDOR UNIVERSAL (CAD, OFFICE, IMÁGENES)
 # =========================================================================
