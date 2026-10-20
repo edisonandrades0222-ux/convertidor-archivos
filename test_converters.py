@@ -139,6 +139,89 @@ def test_cad_multi_layout_export(test_dir):
     assert len(pdf_doc) >= 3
     pdf_doc.close()
 
+def test_pdf_editor_figures(sample_pdf, test_dir):
+    from converters.pdf_editor import apply_all_figures_to_pdf, render_pdf_page_to_image
+    figs = {
+        0: [
+            {"type": "arrow", "x1": 50, "y1": 50, "x2": 200, "y2": 150, "color": "#E53935", "width": 3.0, "head_size": 14.0},
+            {"type": "circle", "cx": 250, "cy": 150, "radius": 40.0, "color": "#1E88E5", "fill_color": "#BBDEFB", "width": 2.0},
+            {"type": "rect", "x": 60, "y": 200, "w": 180, "h": 70, "color": "#43A047", "fill_color": "#C8E6C9", "width": 2.0},
+            {"type": "line", "x1": 50, "y1": 300, "x2": 300, "y2": 300, "color": "#000000", "width": 2.0, "dashed": True},
+            {"type": "text", "x": 70, "y": 240, "text": "Nota de Revisión", "fontsize": 14.0, "color": "#B71C1C", "bold": True},
+            {"type": "highlight", "x": 50, "y": 320, "w": 250, "h": 25, "color": "#FFEB3B"},
+            {"type": "redact", "x": 50, "y": 360, "w": 200, "h": 30, "color": "#000000", "text": "CENSURADO"}
+        ]
+    }
+    out_edited = test_dir / "pdf_con_figuras.pdf"
+    res = apply_all_figures_to_pdf(sample_pdf, out_edited, figs)
+    assert Path(res).exists()
+    assert Path(res).stat().st_size > 0
+
+    # Verificar que se puede renderizar la página con figuras a imagen
+    img = render_pdf_page_to_image(out_edited, 0, dpi=100)
+    assert img.size[0] > 0 and img.size[1] > 0
+
+def test_pdf_advanced_ilovepdf_suite(sample_pdf, test_dir):
+    from converters.pdf_advanced_tools import (
+        merge_pdfs, split_pdf, rotate_pages, compress_pdf, protect_pdf,
+        unlock_pdf, watermark_pdf, add_page_numbers, pdf_to_pptx, pdf_to_excel,
+        crop_pdf, remove_pages, extract_pages
+    )
+
+    # 1. Unir
+    merged = test_dir / "suite_unido.pdf"
+    merge_pdfs([sample_pdf, sample_pdf], merged)
+    assert merged.exists()
+
+    # 2. Dividir
+    split_dir = test_dir / "suite_split"
+    split_files = split_pdf(merged, split_dir, ranges="1, 2")
+    assert len(split_files) >= 1
+
+    # 3. Rotar
+    rotated = test_dir / "suite_rotado.pdf"
+    rotate_pages(sample_pdf, 90, pages="all", output_path=rotated)
+    assert rotated.exists()
+
+    # 4. Comprimir (Extrema)
+    comp_file = test_dir / "suite_comprimido.pdf"
+    res_comp, o_sz, c_sz = compress_pdf(sample_pdf, comp_file, level="extreme")
+    assert Path(res_comp).exists()
+
+    # 5. Proteger y Desbloquear
+    prot_file = test_dir / "suite_protegido.pdf"
+    protect_pdf(sample_pdf, prot_file, "segura123")
+    assert prot_file.exists()
+
+    unl_file = test_dir / "suite_desbloqueado.pdf"
+    unlock_pdf(prot_file, unl_file, "segura123")
+    assert unl_file.exists()
+
+    # 6. Marca de Agua
+    wm_file = test_dir / "suite_watermark.pdf"
+    watermark_pdf(sample_pdf, wm_file, text="CONFIDENCIAL", opacity=0.3)
+    assert wm_file.exists()
+
+    # 7. Numerar Páginas
+    num_file = test_dir / "suite_numerado.pdf"
+    add_page_numbers(sample_pdf, num_file, format_template="Pág {page} de {total}")
+    assert num_file.exists()
+
+    # 8. PDF a PowerPoint
+    pptx_file = test_dir / "suite_presentacion.pptx"
+    pdf_to_pptx(sample_pdf, pptx_file)
+    assert pptx_file.exists()
+
+    # 9. PDF a Excel
+    excel_file = test_dir / "suite_tablas.xlsx"
+    pdf_to_excel(sample_pdf, excel_file)
+    assert excel_file.exists()
+
+    # 10. Recortar
+    crop_file = test_dir / "suite_recortado.pdf"
+    crop_pdf(sample_pdf, crop_file, margins=(10, 10, 10, 10))
+    assert crop_file.exists()
+
 if __name__ == "__main__":
     ret = pytest.main([__file__, "-v", "-s"])
     sys.exit(ret)

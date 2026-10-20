@@ -13,6 +13,7 @@ if str(BASE_DIR) not in sys.path:
 
 from converters.cad_converter import dwg_to_pdf, dwg_to_dxf, dxf_to_pdf, dxf_to_dwg, dxf_to_image
 from converters.pdf_converter import pdf_to_docx, pdf_to_images, images_to_pdf, pdf_to_text
+from converters.pdf_advanced_tools import pdf_to_pptx, pdf_to_excel
 from converters.image_converter import convert_image
 
 # Configuracion visual
@@ -22,6 +23,8 @@ ctk.set_default_color_theme("blue")
 CONVERSION_MAP = {
     ".pdf": [
         ("Word Editable (.docx)", "docx"),
+        ("Excel con Tablas (.xlsx)", "xlsx"),
+        ("PowerPoint Diapositivas (.pptx)", "pptx"),
         ("Imagenes PNG (.png)", "png_batch"),
         ("Imagenes JPG (.jpg)", "jpg_batch"),
         ("Texto plano (.txt)", "txt"),
@@ -531,6 +534,18 @@ class UniversalConverterApp(ctk.CTk):
                     if ext == ".pdf" and target_code == "docx":
                         out_path = Path(self.output_dir) / f"{file_path.stem}.docx"
                         pdf_to_docx(file_path, out_path, progress_callback=self._log)
+
+                    # 1b. PDF a Excel
+                    elif ext == ".pdf" and target_code == "xlsx":
+                        out_path = Path(self.output_dir) / f"{file_path.stem}.xlsx"
+                        pdf_to_excel(file_path, out_path)
+                        self._log(f"Completado con éxito: {out_path.name}")
+
+                    # 1c. PDF a PowerPoint
+                    elif ext == ".pdf" and target_code == "pptx":
+                        out_path = Path(self.output_dir) / f"{file_path.stem}.pptx"
+                        pdf_to_pptx(file_path, out_path)
+                        self._log(f"Completado con éxito: {out_path.name}")
 
                     # 2. PDF a Imágenes
                     elif ext == ".pdf" and target_code in ["png_batch", "jpg_batch"]:
