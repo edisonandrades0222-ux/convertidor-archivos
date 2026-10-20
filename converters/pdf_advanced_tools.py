@@ -312,58 +312,6 @@ def watermark_pdf(
     doc.close()
     return str(output_path)
 
-def rotate_page_bytes(pdf_bytes: bytes, page_number: int, angle: int = 90) -> bytes:
-    """Rota la página indicada (0-indexed) de un flujo de bytes PDF."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    if 0 <= page_number < len(doc):
-        p = doc[page_number]
-        p.set_rotation((p.rotation + angle) % 360)
-    out = doc.tobytes(deflate=True, garbage=3)
-    doc.close()
-    return out
-
-def insert_blank_page_bytes(pdf_bytes: bytes, after_page: int, width: float = 595.0, height: float = 842.0) -> bytes:
-    """Inserta una página en blanco después de after_page (0-indexed)."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    idx = max(0, min(len(doc), after_page + 1))
-    doc.new_page(idx, width=width, height=height)
-    out = doc.tobytes(deflate=True, garbage=3)
-    doc.close()
-    return out
-
-def duplicate_page_bytes(pdf_bytes: bytes, page_number: int) -> bytes:
-    """Duplica la página indicada (0-indexed) justo a continuación."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    src = fitz.open(stream=pdf_bytes, filetype="pdf")
-    if 0 <= page_number < len(doc):
-        doc.insert_pdf(src, from_page=page_number, to_page=page_number, start_at=page_number + 1)
-    out = doc.tobytes(deflate=True, garbage=3)
-    src.close()
-    doc.close()
-    return out
-
-def delete_page_bytes(pdf_bytes: bytes, page_number: int) -> bytes:
-    """Elimina la página indicada (0-indexed) si el documento tiene más de 1 página."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    if len(doc) > 1 and 0 <= page_number < len(doc):
-        doc.delete_page(page_number)
-    out = doc.tobytes(deflate=True, garbage=3)
-    doc.close()
-    return out
-
-def extract_single_page_bytes(pdf_bytes: bytes, page_number: int) -> bytes:
-    """Extrae únicamente la página indicada (0-indexed) como un nuevo PDF."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    if 0 <= page_number < len(doc):
-        sub = fitz.open()
-        sub.insert_pdf(doc, from_page=page_number, to_page=page_number)
-        out = sub.tobytes(deflate=True)
-        sub.close()
-    else:
-        out = pdf_bytes
-    doc.close()
-    return out
-
 def add_page_numbers(
     pdf_path: Union[str, Path], 
     output_path: Union[str, Path], 
@@ -407,58 +355,6 @@ def add_page_numbers(
     doc.save(str(output_path), deflate=True)
     doc.close()
     return str(output_path)
-
-def rotate_page_bytes(pdf_bytes: bytes, page_number: int, angle: int = 90) -> bytes:
-    """Rota la página indicada (0-indexed) de un flujo de bytes PDF."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    if 0 <= page_number < len(doc):
-        p = doc[page_number]
-        p.set_rotation((p.rotation + angle) % 360)
-    out = doc.tobytes(deflate=True, garbage=3)
-    doc.close()
-    return out
-
-def insert_blank_page_bytes(pdf_bytes: bytes, after_page: int, width: float = 595.0, height: float = 842.0) -> bytes:
-    """Inserta una página en blanco después de after_page (0-indexed)."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    idx = max(0, min(len(doc), after_page + 1))
-    doc.new_page(idx, width=width, height=height)
-    out = doc.tobytes(deflate=True, garbage=3)
-    doc.close()
-    return out
-
-def duplicate_page_bytes(pdf_bytes: bytes, page_number: int) -> bytes:
-    """Duplica la página indicada (0-indexed) justo a continuación."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    src = fitz.open(stream=pdf_bytes, filetype="pdf")
-    if 0 <= page_number < len(doc):
-        doc.insert_pdf(src, from_page=page_number, to_page=page_number, start_at=page_number + 1)
-    out = doc.tobytes(deflate=True, garbage=3)
-    src.close()
-    doc.close()
-    return out
-
-def delete_page_bytes(pdf_bytes: bytes, page_number: int) -> bytes:
-    """Elimina la página indicada (0-indexed) si el documento tiene más de 1 página."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    if len(doc) > 1 and 0 <= page_number < len(doc):
-        doc.delete_page(page_number)
-    out = doc.tobytes(deflate=True, garbage=3)
-    doc.close()
-    return out
-
-def extract_single_page_bytes(pdf_bytes: bytes, page_number: int) -> bytes:
-    """Extrae únicamente la página indicada (0-indexed) como un nuevo PDF."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    if 0 <= page_number < len(doc):
-        sub = fitz.open()
-        sub.insert_pdf(doc, from_page=page_number, to_page=page_number)
-        out = sub.tobytes(deflate=True)
-        sub.close()
-    else:
-        out = pdf_bytes
-    doc.close()
-    return out
 
 def pdf_to_pptx(pdf_path: Union[str, Path], output_path: Union[str, Path]) -> str:
     """

@@ -3,5 +3,8 @@ maxUploadSize = 200
 enableCORS = false
 enableXsrfProtection = false
 
+[client]
+showErrorDetails = true
+
 [theme]
 primaryColor = "#3B8ED0"

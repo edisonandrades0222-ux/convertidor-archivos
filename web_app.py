@@ -34,17 +34,28 @@ from converters.pdf_editor import (
     draw_vector_arrow, draw_vector_circle, draw_vector_rect,
     draw_vector_line, add_vector_text, add_permanent_redaction, add_image_overlay
 )
-from converters.pdf_advanced_tools import (
-    merge_pdfs, split_pdf, remove_pages, extract_pages, rotate_pages,
-    compress_pdf, protect_pdf, unlock_pdf, watermark_pdf, add_page_numbers,
-    pdf_to_pptx, pdf_to_excel, crop_pdf,
-    rotate_page_bytes, insert_blank_page_bytes, duplicate_page_bytes,
-    delete_page_bytes, extract_single_page_bytes
-)
-from converters.gemini_pdf_assistant import (
-    get_gemini_client, gemini_ocr_pdf, gemini_summarize_pdf,
-    gemini_chat_with_pdf, gemini_translate_pdf_text, gemini_assist_page
-)
+try:
+    from converters.pdf_advanced_tools import (
+        merge_pdfs, split_pdf, remove_pages, extract_pages, rotate_pages,
+        compress_pdf, protect_pdf, unlock_pdf, watermark_pdf, add_page_numbers,
+        pdf_to_pptx, pdf_to_excel, crop_pdf,
+        rotate_page_bytes, insert_blank_page_bytes, duplicate_page_bytes,
+        delete_page_bytes, extract_single_page_bytes
+    )
+except ImportError as _e1:
+    import traceback
+    st.error(f"Error cargando converters.pdf_advanced_tools: {_e1}")
+    st.code(traceback.format_exc())
+
+try:
+    from converters.gemini_pdf_assistant import (
+        get_gemini_client, gemini_ocr_pdf, gemini_summarize_pdf,
+        gemini_chat_with_pdf, gemini_translate_pdf_text, gemini_assist_page
+    )
+except ImportError as _e2:
+    import traceback
+    st.error(f"Error cargando converters.gemini_pdf_assistant: {_e2}")
+    st.code(traceback.format_exc())
 
 # Garantizar fuentes disponibles de forma eficiente
 @st.cache_resource
